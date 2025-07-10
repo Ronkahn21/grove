@@ -46,249 +46,236 @@ Grove operator currently provides:
 
 ## Design Approaches
 
-### Approach 1: External Service Discovery (Rejected)
+Based on analysis of inference framework requirements and Grove's architecture, we have two concrete proposals for pod discovery:
 
-This approach would use external service discovery mechanisms like etcd, Consul, or Kubernetes Services with custom controllers.
+### Example Scenario
 
-**Implementation:**
-- Deploy external service registry (etcd/Consul)
-- Create sidecar containers for service registration
-- Use custom controllers to populate service information
-- Frameworks query external registry for peer discovery
+For reference, consider this Grove setup:
+- **PodGangSet**: `inf` (replicas=1) in namespace `dynamo`
+- **PodCliqueScalingGroup**: `decode` (replicas=1)
+- **PodCliques**: `dleader` (replicas=1), `dworker` (replicas=4)
+- **Resulting Pods**: `inf-0-decode-0-dleader-xyzsd`, `inf-0-decode-0-dworker-ksjdd`, etc.
 
-**Pros:**
-- Rich query capabilities and dynamic updates
-- Well-established patterns in distributed systems
-- Can support complex service topologies
-
-**Cons:**
-- ❌ **Additional Infrastructure**: Requires deploying and managing additional services
-- ❌ **Framework Dependencies**: Requires frameworks to integrate with specific service discovery clients
-- ❌ **Network Dependencies**: Fails during network partitions or service outages
-- ❌ **Complexity**: Increases operational overhead and debugging complexity
-- ❌ **Startup Dependencies**: Pods cannot start until service discovery is available
-- ❌ **Not Kubernetes Native**: Doesn't align with Kubernetes' declarative model
-
-### Approach 2: Environment Variable-Based Discovery (Recommended)
-
-This approach uses environment variables injected by Grove operator to provide role-based discovery information.
+### Proposal 1: Comprehensive Environment Variable Set
 
 **Implementation:**
-- Add `roleName` field to PodCliqueSpec for role identification
-- Grove operator discovers all roles within PodGangSet scope
-- Inject environment variables into each pod with discovery information
-- Frameworks read environment variables for peer discovery
+- Add `roleName` field to `PodCliqueTemplateSpec` for role identification
+- Inject comprehensive set of environment variables for discovery and addressing
+- Provide both individual pod discovery and role-based grouping
+
+**Environment Variables Provided:**
+
+*Basic Grove Information:*
+```bash
+GROVE_PGS_NAME=inf
+GROVE_PGS_INDEX=0
+GROVE_PCLQ_NAME=inf-0-decode-0-dleader
+GROVE_PCLQ_INDEX=0
+GROVE_HEADLESS_SERVICE=inf0.dynamo.svc.cluster.local
+GROVE_HOSTNAME=inf-0-decode-0-dleader-0
+```
+
+*Role Information:*
+```bash
+ROLE_NAME=LEADER
+ROLE_INDEX=0
+GROVE_ROLES=LEADER,WORKER  # For PCSG members
+```
+
+*Individual Pod Discovery (for PCSG members):*
+```bash
+LEADER_0=inf-0-decode-0-dleader-0
+WORKER_0=inf-0-decode-0-dworker-0
+WORKER_1=inf-0-decode-0-dworker-1
+WORKER_2=inf-0-decode-0-dworker-2
+WORKER_3=inf-0-decode-0-dworker-3
+```
+
+*Full Address Discovery (for PCSG members):*
+```bash
+LEADER_0_ADDR=inf-0-decode-0-dleader-0.inf0.dynamo.svc.cluster.local
+WORKER_0_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
+WORKER_1_ADDR=inf-0-decode-0-dworker-1.inf0.dynamo.svc.cluster.local
+WORKER_2_ADDR=inf-0-decode-0-dworker-2.inf0.dynamo.svc.cluster.local
+WORKER_3_ADDR=inf-0-decode-0-dworker-3.inf0.dynamo.svc.cluster.local
+```
 
 **Pros:**
-- ✅ **Kubernetes Native**: Follows established Kubernetes patterns
-- ✅ **Zero Dependencies**: No external services or agents required
-- ✅ **Framework Agnostic**: Works with any containerized application
-- ✅ **Immediate Availability**: Available at pod startup
-- ✅ **Reliable**: Immune to network issues or service outages
-- ✅ **Simple Operations**: No additional infrastructure to deploy or manage
-- ✅ **Grove Integration**: Leverages existing PodGangSet architecture
+- ✅ **Complete Information**: Provides all possible discovery data
+- ✅ **Individual Pod Access**: Can address specific pod replicas by index
+- ✅ **Framework Flexibility**: Supports diverse framework communication patterns
+- ✅ **Debugging Friendly**: Rich information for troubleshooting
 
 **Cons:**
-- ❌ **Static Information**: Cannot be updated without pod restart
-- ❌ **Limited Query Capabilities**: Simple key-value pairs only
+- ❌ **Environment Variable Proliferation**: Large number of variables for big scaling groups
+- ❌ **Memory Overhead**: Significant memory usage for environment variables
+- ❌ **Complexity**: More variables to manage and understand
 
-## Recommended Approach: Environment Variables
+### Proposal 2: Minimal Role-Based Discovery
 
-We recommend **Approach 2 (Environment Variables)** because it aligns with Grove's design principles and inference workload requirements:
+**Implementation:**
+- Add `roleName` field to `PodCliqueTemplateSpec` for role identification
+- Provide minimal set of variables focused on role-based leader discovery
+- Emphasize DNS-based discovery patterns
 
-### Why Environment Variables Win for Inference
+**Environment Variables Provided:**
 
-1. **Inference Workload Patterns**: Most inference serving is long-running with stable pod membership
-2. **Framework Compatibility**: All major inference frameworks (TensorRT-LLM, vLLM, SGLang) support environment variables
-3. **Kubernetes Alignment**: Matches patterns used by StatefulSets, Jobs, and other core Kubernetes resources
-4. **Operational Simplicity**: Reduces moving parts and operational complexity
-5. **Grove Architecture Fit**: Leverages existing PodGangSet scope and gang scheduling
+*Role Information:*
+```bash
+ROLE_NAME=LEADER
+ROLE_INDEX=0
+```
+
+*Role-Based Leader Discovery:*
+```bash
+LEADER_ADDR=inf-0-decode-0-dleader-0.inf0.dynamo.svc.cluster.local
+WORKER_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
+```
+
+**Role Uniqueness Rules:**
+- If PodClique is part of PCSG: Role must be unique within that PCSG
+- If PodClique is standalone: Role must be unique among all standalone PodCliques
+- Role variables injected based on scope (PCSG vs PodGangSet-wide)
+
+**Pros:**
+- ✅ **Simplicity**: Minimal set of variables to understand and manage
+- ✅ **DNS-Native**: Leverages Kubernetes DNS for service discovery
+- ✅ **Scalable**: Number of variables doesn't grow with replica count
+- ✅ **Leader-Worker Pattern**: Optimized for common inference patterns
+
+**Cons:**
+- ❌ **Limited Individual Access**: Cannot directly address non-leader pod replicas
+- ❌ **DNS Dependency**: Requires working cluster DNS for full functionality
+- ❌ **Framework Constraints**: May not suit all communication patterns
+
+## Recommended Approach: Proposal 2 (Minimal Role-Based)
+
+We recommend **Proposal 2** because it balances functionality with simplicity:
+
+### Why Proposal 2 for Inference Workloads
+
+1. **Leader-Worker Dominance**: Most inference frameworks use leader-worker patterns where workers connect to leaders
+2. **DNS Integration**: Kubernetes DNS provides robust service discovery that complements environment variables
+3. **Scalability**: Environment variable count remains manageable even with large replica counts
+4. **Operational Simplicity**: Fewer variables reduce debugging complexity and memory overhead
+5. **Framework Alignment**: Matches patterns used by TensorRT-LLM, vLLM, and SGLang
 
 ## Detailed Design
 
-### 1. Role-Based Environment Variable Injection
+### API Changes
 
-#### Core Environment Variables
-Each pod will receive standard environment variables:
-
-```bash
-# Pod's own role information
-GROVE_ROLE=<role-name>
-GROVE_CLIQUE_NAME=<podclique-template-name>
-GROVE_REPLICA_INDEX=<pod-replica-index>
-GROVE_PGS_REPLICA_INDEX=<podgangset-replica-index>
-
-# Leadership information (for replica index 0 of each role)
-GROVE_IS_LEADER=true|false
-```
-
-#### Service Discovery Variables
-For each role in the PodGangSet, pods receive discovery information:
-
-```bash
-# Service discovery for each role
-GROVE_ROLE_<ROLE_NAME>_COUNT=<replica-count>
-# Additional discovery variables to be determined based on implementation needs
-```
-
-### 2. Multi-Leader Support Within PodGangSet
-
-#### Scenario 1: Multiple Leader Types in Same Scaling Group
-In a single PodCliqueScalingGroup with multiple leader types:
+Add `roleName` field to `PodCliqueTemplateSpec`:
 
 ```yaml
 apiVersion: grove.io/v1alpha1
 kind: PodGangSet
-metadata:
-  name: llm-inference
 spec:
   template:
     cliques:
-      - name: prefill-leaders
+      - name: dleader
         spec:
-          roleName: prefill-leader
-          replicas: 2
-          podSpec: # ... pod specification
-      - name: decode-leaders  
-        spec:
-          roleName: decode-leader
-          replicas: 2
-          podSpec: # ... pod specification
-      - name: workers
-        spec:
-          roleName: worker
-          replicas: 4
-          podSpec: # ... pod specification
-    podCliqueScalingGroups:
-      - name: inference-group
-        # Multiple leader types in the SAME scaling group
-        cliqueNames: ["prefill-leaders", "decode-leaders", "workers"]
-```
-
-#### Scenario 2: Mixed - Scaling Groups + Standalone PodCliques
-```yaml
-apiVersion: grove.io/v1alpha1
-kind: PodGangSet
-metadata:
-  name: multi-model-inference
-spec:
-  template:
-    cliques:
-      - name: text-leaders
-        spec:
-          roleName: text-leader
-          replicas: 2
-          podSpec: # ... pod specification
-      - name: vision-leaders
-        spec:
-          roleName: vision-leader
-          replicas: 2
-          podSpec: # ... pod specification
-      - name: inference-workers
-        spec:
-          roleName: worker
-          replicas: 8
-          podSpec: # ... pod specification
-      - name: standalone-gateway
-        spec:
-          roleName: api-gateway
+          roleName: LEADER          # NEW: Role identifier
           replicas: 1
           podSpec: # ... pod specification
-    podCliqueScalingGroups:
-      - name: inference-group
-        # Multiple leaders + workers in same scaling group
-        cliqueNames: ["text-leaders", "vision-leaders", "inference-workers"]
-    # standalone-gateway remains outside scaling groups
+      - name: dworker
+        spec:
+          roleName: WORKER          # NEW: Role identifier
+          replicas: 4
+          podSpec: # ... pod specification
 ```
 
-#### Environment Variables for Multi-Leader Scenarios
+### Environment Variable Injection (Proposal 2)
 
-**Scenario 1: Multiple Leaders in Same Scaling Group**
-For a worker pod in the `inference-group` scaling group:
+#### Core Role Variables
+Each pod receives its role information:
 
 ```bash
-# Pod's own information
-GROVE_ROLE=worker
-GROVE_CLIQUE_NAME=workers
-GROVE_REPLICA_INDEX=2
-GROVE_IS_LEADER=false
-
-# Discover prefill-leader role (in same scaling group)
-GROVE_ROLE_PREFILL_LEADER_COUNT=2
-
-# Discover decode-leader role (in same scaling group)
-GROVE_ROLE_DECODE_LEADER_COUNT=2
-
-# Discover worker role (own role, in same scaling group)
-GROVE_ROLE_WORKER_COUNT=4
+ROLE_NAME=<role-name>        # e.g., LEADER, WORKER
+ROLE_INDEX=<replica-index>   # e.g., 0, 1, 2
 ```
 
-**Scenario 2: Mixed Scaling Groups + Standalone**
-For a worker pod in the `inference-group` scaling group:
+#### Leader Discovery Variables
+Each pod receives DNS addresses for role leaders (index 0 of each role):
 
 ```bash
-# Pod's own information
-GROVE_ROLE=worker
-GROVE_CLIQUE_NAME=inference-workers
-GROVE_REPLICA_INDEX=3
-GROVE_IS_LEADER=false
-
-# Leaders in same scaling group
-GROVE_ROLE_TEXT_LEADER_COUNT=2
-GROVE_ROLE_VISION_LEADER_COUNT=2
-
-# Own role in scaling group
-GROVE_ROLE_WORKER_COUNT=8
-
-# Standalone gateway (outside scaling groups)
-GROVE_ROLE_API_GATEWAY_COUNT=1
+<ROLE_NAME>_ADDR=<leader-dns-address>
 ```
 
-### 3. Implementation Architecture
-
-#### Component Modifications
-
-**1. Pod Creation Enhancement**
-- Location: `internal/component/pclq/pod/pod.go`
-- Modify `buildResource()` to inject role-based environment variables
-- Extract role information from PodClique labels and metadata
-
-**2. Environment Variable Provider**
-- New component: `internal/component/pclq/pod/discovery.go`
-- Responsible for generating role-based environment variables
-- Query PodGangSet to discover all roles across scaling groups and standalone PodCliques
-- Handle cross-scaling-group role discovery
-
-**3. Service Discovery Integration**
-- Enhance existing headless service patterns
-- Add role-based service naming conventions
-- Maintain backward compatibility with current service discovery
-
-#### Environment Variable Generation Flow
-
-```
-PodGangSet (contains PodCliqueScalingGroups + standalone PodCliques)
-    ↓
-Discover all PodCliques within the PodGangSet scope
-    ↓ 
-Group PodCliques by role across all scaling groups and standalone cliques
-    ↓
-Generate environment variables for cross-role discovery
-    ↓
-Inject into pod containers during creation
+For the example scenario:
+```bash
+LEADER_ADDR=inf-0-decode-0-dleader-0.inf0.dynamo.svc.cluster.local
+WORKER_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
 ```
 
-### 4. Naming Conventions
+### Role Scoping Rules
 
-#### Environment Variable Naming
-- Use uppercase with underscores: `GROVE_ROLE_<ROLE>_<ATTRIBUTE>`
-- Role names converted to uppercase: `prefill-leader` → `PREFILL_LEADER`
-- Consistent with Kubernetes environment variable patterns
+#### For PodCliques in PodCliqueScalingGroups
+- **Role Uniqueness**: Each role must be unique within the PCSG
+- **Variable Scope**: Role discovery variables include all roles within the same PCSG
+- **Example**: If PCSG contains `PREFILL_LEADER`, `DECODE_LEADER`, `WORKER` roles:
+  ```bash
+  PREFILL_LEADER_ADDR=inf-0-decode-0-prefill-0.inf0.dynamo.svc.cluster.local
+  DECODE_LEADER_ADDR=inf-0-decode-0-decode-0.inf0.dynamo.svc.cluster.local
+  WORKER_ADDR=inf-0-decode-0-worker-0.inf0.dynamo.svc.cluster.local
+  ```
 
-#### Service Naming
-- Leverage existing headless service patterns
-- Maintain compatibility with current DNS patterns
-- Specific service naming conventions to be determined based on implementation needs
+#### For Standalone PodCliques
+- **Role Uniqueness**: Each role must be unique among all standalone PodCliques in the PodGangSet
+- **Variable Scope**: Role discovery variables include all standalone roles in the PodGangSet
+- **Example**: If PodGangSet has standalone roles `API_GATEWAY`, `MONITOR`:
+  ```bash
+  API_GATEWAY_ADDR=inf-0-gateway-0.inf0.dynamo.svc.cluster.local
+  MONITOR_ADDR=inf-0-monitor-0.inf0.dynamo.svc.cluster.local
+  ```
+
+### Validation Requirements
+
+#### RoleName Field Validation
+- **Format**: Role names must be valid identifiers (alphanumeric, underscores, hyphens)
+- **Case**: Typically uppercase for environment variables (e.g., `LEADER`, `WORKER`, `PREFILL_LEADER`)
+- **Uniqueness**: Enforced within appropriate scope (PCSG or PodGangSet-wide for standalone)
+
+#### Scope-Based Validation
+- **PCSG Members**: Validate role uniqueness within each PodCliqueScalingGroup
+- **Standalone PodCliques**: Validate role uniqueness among all standalone PodCliques in PodGangSet
+- **Cross-Reference**: Ensure scaling group references point to valid PodCliques with roles
+
+## Key Design Challenge: Role Uniqueness
+
+### Problem with Current Proposals
+
+You're absolutely right to point out the issue with having the same role (like "LEADER") in the same PCSG. This creates several problems:
+
+1. **Environment Variable Conflicts**: Multiple PodCliques with `roleName: LEADER` in the same PCSG would create conflicting `LEADER_ADDR` variables
+2. **Ambiguous Discovery**: Frameworks wouldn't know which "LEADER" to connect to
+3. **DNS Conflicts**: Multiple leaders would try to claim the same DNS name pattern
+
+### Proposed Solutions
+
+#### Option A: Enforce Unique Roles Within PCSG
+- **Rule**: Each role must be unique within a PodCliqueScalingGroup
+- **Example**: Within same PCSG, use `PREFILL_LEADER`, `DECODE_LEADER`, `WORKER` instead of multiple `LEADER` roles
+- **Validation**: Admission webhook rejects PodGangSets with duplicate roles in same PCSG
+
+#### Option B: Hierarchical Role Naming
+- **Rule**: Allow same base role but require disambiguation
+- **Example**: `PREFILL_LEADER`, `DECODE_LEADER` for two leader types
+- **Pattern**: `<component>_<role>` naming convention
+
+#### Option C: Scoped Role Variables
+- **Rule**: Use PodClique name as disambiguation
+- **Example**: `PREFILL_ADDR`, `DECODE_ADDR` based on PodClique names rather than roles
+- **Trade-off**: Loses role abstraction benefits
+
+### Recommended Solution: Option A (Unique Roles)
+
+We recommend **Option A** because it:
+- ✅ **Eliminates Ambiguity**: Clear, unambiguous role identification
+- ✅ **Framework Friendly**: Easy for frameworks to understand role relationships  
+- ✅ **Scales Well**: Works for complex multi-leader scenarios
+- ✅ **Validation Friendly**: Easy to validate and provide clear error messages
+
+## Design Rationale
 
 ## Proposed API Changes
 
