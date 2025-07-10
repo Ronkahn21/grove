@@ -3,28 +3,25 @@
 **Status**: Draft  
 **Date**: 2025-01-09  
 **Authors**: Grove Maintainers  
+**Scope**: MVP - Environment variable-based pod discovery
 
 ## Problem Statement
 
-### Requirements for Inference Workloads
+### Requirements: LeaderWorkerSet Parity with Multi-Leader Support
 
-Modern inference frameworks (TensorRT-LLM, SGLang, vLLM) require pods within a Grove PodGangSet to discover and communicate with each other based on their roles rather than arbitrary names. Key requirements include:
+The goal is to provide the same pod discovery experience as LeaderWorkerSet (LWS) but with Grove's key advantage: **supporting multiple leader types within the same PodCliqueScalingGroup replica**.
 
-1. **Role-Based Discovery**: Pods need to identify peers by functional role (e.g., "leader", "worker", "prefill-leader", "decode-worker")
-2. **Multi-Leader Support**: Support for multiple leader types within the same PodCliqueScalingGroup for disaggregated serving patterns
-3. **Framework Agnostic**: Work with any inference framework without requiring framework-specific integrations
-4. **PodGangSet Scope**: Discovery must work across all PodCliques within a PodGangSet, both in scaling groups and standalone
-5. **Startup Coordination**: Enable frameworks to coordinate initialization and establish communication patterns
+#### Current LeaderWorkerSet Limitations
+- **Single Leader Type**: LWS only supports one leader type per replica
+- **Disaggregated Serving Constraint**: Cannot model prefill-leader + decode-leader in the same scaling unit
+- **Role Inflexibility**: Fixed leader/worker pattern doesn't match modern inference architectures
 
-### Why Environment Variables Are Essential
+#### Grove Requirements
+1. **LWS Experience Parity**: Provide equivalent pod discovery capabilities to what users expect from LeaderWorkerSet
+2. **Multi-Leader Support**: Enable multiple leader types (e.g., `PREFILL_LEADER`, `DECODE_LEADER`) in the same PCSG replica
+3. **Disaggregated Serving**: Support modern inference patterns where different leader types coordinate within the same scaling unit
+4. **Framework Compatibility**: Work with inference frameworks that expect leader-worker discovery patterns
 
-Environment variables are the universal standard for service discovery in containerized inference workloads because:
-
-- **Framework Independence**: All inference frameworks can read environment variables without additional dependencies
-- **Container Native**: Available immediately at pod startup without external service calls
-- **Industry Standard**: Matches patterns used by Kubernetes StatefulSets, Jobs, and other orchestration systems
-- **Simplicity**: No additional infrastructure, agents, or service discovery mechanisms required
-- **Reliability**: Always available, even during network partitions or service discovery service outages
 
 ## Current State
 
@@ -44,9 +41,7 @@ Grove operator currently provides:
 - Manual configuration required for inter-pod communication
 - Inference frameworks must implement their own role identification and discovery mechanisms
 
-## Design Approaches
-
-Based on analysis of inference framework requirements and Grove's architecture, we have two concrete proposals for pod discovery:
+## Solution: Environment Variable-Based Discovery
 
 ### Example Scenario
 
@@ -56,67 +51,12 @@ For reference, consider this Grove setup:
 - **PodCliques**: `dleader` (replicas=1), `dworker` (replicas=4)
 - **Resulting Pods**: `inf-0-decode-0-dleader-xyzsd`, `inf-0-decode-0-dworker-ksjdd`, etc.
 
-### Proposal 1: Comprehensive Environment Variable Set
-
-**Implementation:**
-- Add `roleName` field to `PodCliqueTemplateSpec` for role identification
-- Inject comprehensive set of environment variables for discovery and addressing
-- Provide both individual pod discovery and role-based grouping
-
-**Environment Variables Provided:**
-
-*Basic Grove Information:*
-```bash
-GROVE_PGS_NAME=inf
-GROVE_PGS_INDEX=0
-GROVE_PCLQ_NAME=inf-0-decode-0-dleader
-GROVE_PCLQ_INDEX=0
-GROVE_HEADLESS_SERVICE=inf0.dynamo.svc.cluster.local
-GROVE_HOSTNAME=inf-0-decode-0-dleader-0
-```
-
-*Role Information:*
-```bash
-ROLE_NAME=LEADER
-ROLE_INDEX=0
-GROVE_ROLES=LEADER,WORKER  # For PCSG members
-```
-
-*Individual Pod Discovery (for PCSG members):*
-```bash
-LEADER_0=inf-0-decode-0-dleader-0
-WORKER_0=inf-0-decode-0-dworker-0
-WORKER_1=inf-0-decode-0-dworker-1
-WORKER_2=inf-0-decode-0-dworker-2
-WORKER_3=inf-0-decode-0-dworker-3
-```
-
-*Full Address Discovery (for PCSG members):*
-```bash
-LEADER_0_ADDR=inf-0-decode-0-dleader-0.inf0.dynamo.svc.cluster.local
-WORKER_0_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
-WORKER_1_ADDR=inf-0-decode-0-dworker-1.inf0.dynamo.svc.cluster.local
-WORKER_2_ADDR=inf-0-decode-0-dworker-2.inf0.dynamo.svc.cluster.local
-WORKER_3_ADDR=inf-0-decode-0-dworker-3.inf0.dynamo.svc.cluster.local
-```
-
-**Pros:**
-- ✅ **Complete Information**: Provides all possible discovery data
-- ✅ **Individual Pod Access**: Can address specific pod replicas by index
-- ✅ **Framework Flexibility**: Supports diverse framework communication patterns
-- ✅ **Debugging Friendly**: Rich information for troubleshooting
-
-**Cons:**
-- ❌ **Environment Variable Proliferation**: Large number of variables for big scaling groups
-- ❌ **Memory Overhead**: Significant memory usage for environment variables
-- ❌ **Complexity**: More variables to manage and understand
-
-### Proposal 2: Minimal Role-Based Discovery
+### Approach: Minimal Role-Based Discovery
 
 **Implementation:**
 - Add `roleName` field to `PodCliqueTemplateSpec` for role identification
 - Provide minimal set of variables focused on role-based leader discovery
-- Emphasize DNS-based discovery patterns
+- Scope limited to single PCSG replica (scaling limitation acknowledged)
 
 **Environment Variables Provided:**
 
@@ -126,39 +66,24 @@ ROLE_NAME=LEADER
 ROLE_INDEX=0
 ```
 
-*Role-Based Leader Discovery:*
+*Role-Based Leader Discovery (within same PCSG replica):*
 ```bash
 LEADER_ADDR=inf-0-decode-0-dleader-0.inf0.dynamo.svc.cluster.local
 WORKER_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
 ```
 
-**Role Uniqueness Rules:**
-- If PodClique is part of PCSG: Role must be unique within that PCSG
-- If PodClique is standalone: Role must be unique among all standalone PodCliques
-- Role variables injected based on scope (PCSG vs PodGangSet-wide)
+**Constraints and Limitations:**
+- ✅ **Works within single PCSG replica**: All discovery within one replica works perfectly
+- ❌ **Does not work across PCSG replicas**: Autoscaling creates independent replicas
+- ❌ **Static at pod creation**: Environment variables cannot be updated during pod lifetime
+- ✅ **Multi-leader support**: Can have multiple leader types in same replica (key differentiator vs LWS)
 
-**Pros:**
-- ✅ **Simplicity**: Minimal set of variables to understand and manage
-- ✅ **DNS-Native**: Leverages Kubernetes DNS for service discovery
-- ✅ **Scalable**: Number of variables doesn't grow with replica count
-- ✅ **Leader-Worker Pattern**: Optimized for common inference patterns
-
-**Cons:**
-- ❌ **Limited Individual Access**: Cannot directly address non-leader pod replicas
-- ❌ **DNS Dependency**: Requires working cluster DNS for full functionality
-- ❌ **Framework Constraints**: May not suit all communication patterns
-
-## Recommended Approach: Proposal 2 (Minimal Role-Based)
-
-We recommend **Proposal 2** because it balances functionality with simplicity:
-
-### Why Proposal 2 for Inference Workloads
-
-1. **Leader-Worker Dominance**: Most inference frameworks use leader-worker patterns where workers connect to leaders
-2. **DNS Integration**: Kubernetes DNS provides robust service discovery that complements environment variables
-3. **Scalability**: Environment variable count remains manageable even with large replica counts
-4. **Operational Simplicity**: Fewer variables reduce debugging complexity and memory overhead
-5. **Framework Alignment**: Matches patterns used by TensorRT-LLM, vLLM, and SGLang
+**Why This Approach:**
+1. **LeaderWorkerSet Parity**: Provides equivalent experience within replica scope
+2. **Multi-Leader Advantage**: Enables disaggregated serving patterns LWS cannot support
+3. **Simple Implementation**: Minimal variables reduce complexity
+4. **Framework Compatibility**: Matches inference framework expectations
+5. **Clear Limitations**: Scaling constraints are explicit and understood
 
 ## Detailed Design
 
@@ -207,26 +132,33 @@ LEADER_ADDR=inf-0-decode-0-dleader-0.inf0.dynamo.svc.cluster.local
 WORKER_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
 ```
 
-### Role Scoping Rules
+### Environment Variable Scoping Rules
 
-#### For PodCliques in PodCliqueScalingGroups
+#### For PodCliques in PodCliqueScalingGroups (PCSG)
 - **Role Uniqueness**: Each role must be unique within the PCSG
-- **Variable Scope**: Role discovery variables include all roles within the same PCSG
-- **Example**: If PCSG contains `PREFILL_LEADER`, `DECODE_LEADER`, `WORKER` roles:
+- **Variable Injection**: All roles defined in the PCSG get entered as env vars into ALL pods belonging to that PCSG
+- **Example**: If PCSG contains PodCliques with roles `PREFILL_LEADER`, `DECODE_LEADER`, `WORKER`:
   ```bash
+  # Every pod in this PCSG gets ALL these variables:
   PREFILL_LEADER_ADDR=inf-0-decode-0-prefill-0.inf0.dynamo.svc.cluster.local
   DECODE_LEADER_ADDR=inf-0-decode-0-decode-0.inf0.dynamo.svc.cluster.local
   WORKER_ADDR=inf-0-decode-0-worker-0.inf0.dynamo.svc.cluster.local
   ```
 
-#### For Standalone PodCliques
-- **Role Uniqueness**: Each role must be unique among all standalone PodCliques in the PodGangSet
-- **Variable Scope**: Role discovery variables include all standalone roles in the PodGangSet
-- **Example**: If PodGangSet has standalone roles `API_GATEWAY`, `MONITOR`:
+#### For Standalone PodCliques (NOT part of any PCSG)
+- **Role Uniqueness**: Each role must be unique among ALL standalone PodCliques in the PodGangSet
+- **Variable Injection**: All standalone roles get entered as env vars into ALL standalone pods
+- **Example**: If PodGangSet has standalone PodCliques with roles `API_GATEWAY`, `MONITOR`:
   ```bash
+  # Every standalone pod gets ALL these variables:
   API_GATEWAY_ADDR=inf-0-gateway-0.inf0.dynamo.svc.cluster.local
   MONITOR_ADDR=inf-0-monitor-0.inf0.dynamo.svc.cluster.local
   ```
+
+#### Cross-Scope Isolation
+- **PCSG pods**: Only get env vars for roles within their PCSG (no standalone role vars)
+- **Standalone pods**: Only get env vars for standalone roles (no PCSG role vars)
+- **Different PCSGs**: Do not share env vars with each other
 
 ### Validation Requirements
 
@@ -236,44 +168,96 @@ WORKER_ADDR=inf-0-decode-0-dworker-0.inf0.dynamo.svc.cluster.local
 - **Uniqueness**: Enforced within appropriate scope (PCSG or PodGangSet-wide for standalone)
 
 #### Scope-Based Validation
-- **PCSG Members**: Validate role uniqueness within each PodCliqueScalingGroup
-- **Standalone PodCliques**: Validate role uniqueness among all standalone PodCliques in PodGangSet
+- **Within PCSG**: Validate role uniqueness among all PodCliques within each PodCliqueScalingGroup
+- **Standalone PodCliques**: Validate role uniqueness among ALL standalone PodCliques in the entire PodGangSet
 - **Cross-Reference**: Ensure scaling group references point to valid PodCliques with roles
+- **Scope Isolation**: Validate that role names don't conflict across scopes (PCSG vs standalone)
 
-## Key Design Challenge: Role Uniqueness
+## Key Design Constraint: Role Uniqueness
 
-### Problem with Current Proposals
+### The Role Conflict Problem
 
-You're absolutely right to point out the issue with having the same role (like "LEADER") in the same PCSG. This creates several problems:
+Having the same role (like "LEADER") in the same PCSG creates fundamental conflicts:
 
-1. **Environment Variable Conflicts**: Multiple PodCliques with `roleName: LEADER` in the same PCSG would create conflicting `LEADER_ADDR` variables
+1. **Environment Variable Conflicts**: Multiple PodCliques with `roleName: LEADER` would create conflicting `LEADER_ADDR` variables
 2. **Ambiguous Discovery**: Frameworks wouldn't know which "LEADER" to connect to
-3. **DNS Conflicts**: Multiple leaders would try to claim the same DNS name pattern
+3. **DNS Conflicts**: Multiple leaders would claim the same DNS name pattern
 
-### Proposed Solutions
+### Solution: Enforce Unique Roles Within PCSG
 
-#### Option A: Enforce Unique Roles Within PCSG
-- **Rule**: Each role must be unique within a PodCliqueScalingGroup
-- **Example**: Within same PCSG, use `PREFILL_LEADER`, `DECODE_LEADER`, `WORKER` instead of multiple `LEADER` roles
-- **Validation**: Admission webhook rejects PodGangSets with duplicate roles in same PCSG
+**Rule**: Each role must be unique within a PodCliqueScalingGroup
 
-#### Option B: Hierarchical Role Naming
-- **Rule**: Allow same base role but require disambiguation
-- **Example**: `PREFILL_LEADER`, `DECODE_LEADER` for two leader types
-- **Pattern**: `<component>_<role>` naming convention
+**Example**: Within same PCSG, use distinct roles:
+- `PREFILL_LEADER` - for prefill coordination
+- `DECODE_LEADER` - for decode coordination  
+- `WORKER` - for inference processing
 
-#### Option C: Scoped Role Variables
-- **Rule**: Use PodClique name as disambiguation
-- **Example**: `PREFILL_ADDR`, `DECODE_ADDR` based on PodClique names rather than roles
-- **Trade-off**: Loses role abstraction benefits
+**Validation**: Admission webhook rejects PodGangSets with duplicate roles in same PCSG
 
-### Recommended Solution: Option A (Unique Roles)
+## MVP Limitation: Single PCSG Replica Scope
 
-We recommend **Option A** because it:
-- ✅ **Eliminates Ambiguity**: Clear, unambiguous role identification
-- ✅ **Framework Friendly**: Easy for frameworks to understand role relationships  
-- ✅ **Scales Well**: Works for complex multi-leader scenarios
-- ✅ **Validation Friendly**: Easy to validate and provide clear error messages
+### Environment Variable Constraint
+
+**Fundamental Limitation**: Environment variables are static at pod creation and cannot be updated during pod lifetime.
+
+**MVP Scope**: Environment variables work reliably only within a single PodCliqueScalingGroup replica.
+
+#### What This Means
+
+- **Within PCSG Replica**: ✅ Complete discovery works perfectly
+- **Across PCSG Replicas**: ❌ No environment variable discovery
+- **Autoscaling**: ❌ New replicas are independent units
+- **Load Balancing**: External mechanism needed for cross-replica traffic
+
+#### Why This Constraint is Acceptable for MVP
+
+1. **Inference Patterns**: Frameworks establish connections at startup and maintain them
+2. **Replica Independence**: Each PCSG replica is a complete inference unit
+3. **LeaderWorkerSet Parity**: LWS has same limitation (single replica scope)
+4. **Clear Expectations**: Users understand the scope and limitations
+
+## MVP Focus: Multi-Leader Support in Single PCSG Replica
+
+### LeaderWorkerSet Comparison
+
+#### What LeaderWorkerSet Provides
+```bash
+# In LeaderWorkerSet, each pod gets:
+LWS_LEADER_ADDRESS=leader-0.service.namespace.svc.cluster.local
+REPLICA_ID=0
+POD_NAME=workerset-0-leader-0
+```
+
+#### Grove MVP Equivalent (Proposal 2)
+```bash
+# In Grove PCSG replica, each pod gets:
+ROLE_NAME=PREFILL_LEADER  # or DECODE_LEADER, WORKER
+ROLE_INDEX=0
+PREFILL_LEADER_ADDR=inf-0-decode-0-prefill-0.inf0.dynamo.svc.cluster.local
+DECODE_LEADER_ADDR=inf-0-decode-0-decode-0.inf0.dynamo.svc.cluster.local
+WORKER_ADDR=inf-0-decode-0-worker-0.inf0.dynamo.svc.cluster.local
+```
+
+### Key MVP Differentiator
+
+**LeaderWorkerSet**: Single leader type per replica
+```yaml
+# LWS - Cannot do this in one replica
+prefill-leader + decode-leader + workers  ❌
+```
+
+**Grove**: Multiple leader types per PCSG replica
+```yaml
+# Grove - CAN do this in one replica  
+prefill-leader + decode-leader + workers  ✅
+```
+
+### MVP Scope Constraints
+
+1. **Single PCSG Replica Focus**: Environment variables work within one PCSG replica only
+2. **LWS Feature Parity**: Provide equivalent discovery capabilities to LeaderWorkerSet
+3. **Multi-Leader Extension**: Add support for multiple leader types in same replica
+4. **Simple Validation**: Enforce unique roles within PCSG replica scope
 
 ## Design Rationale
 
