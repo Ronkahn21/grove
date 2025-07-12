@@ -113,30 +113,15 @@ func (v *pgsValidator) validatePodCliqueTemplates(fldPath *field.Path) ([]string
 	cliqueRoles := make([]string, 0, len(cliqueTemplateSpecs))
 	schedulerNames := make([]string, 0, len(cliqueTemplateSpecs))
 	for _, cliqueTemplateSpec := range cliqueTemplateSpecs {
-		if err := apivalidation.NameIsDNSSubdomain(cliqueTemplateSpec.Name, false); err != nil {
-			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), cliqueTemplateSpec.Name,
-				"invalid PodCliqueTemplateSpec name, must be a valid DNS subdomain"))
-		}
-
-		// Only validate pod name constraints for PodCliques that are NOT part of any scaling group
-		// any pod clique that is part of scaling groups will be checked as part of scaling group pod name constraints.
-		if !scalingGroupCliqueNames.Has(cliqueTemplateSpec.Name) {
-			if err := validatePodNameConstraints(v.pgs.Name, "", cliqueTemplateSpec.Name); err != nil {
-				// add error to each of filed paths that compose the podName in case of a PodCliqueTemplateSpec
-				allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), cliqueTemplateSpec.Name, err.Error()))
-				allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), v.pgs.Name, err.Error()))
-			}
-		}
-
-		cliqueNames = append(cliqueNames, cliqueTemplateSpec.Name)
-		cliqueRoles = append(cliqueRoles, cliqueTemplateSpec.Spec.RoleName)
-		warns, errs := v.validatePodCliqueTemplateSpec(cliqueTemplateSpec, fldPath)
+		warns, errs := v.validatePodCliqueTemplateSpec(cliqueTemplateSpec, fldPath, scalingGroupCliqueNames)
 		if len(errs) != 0 {
 			allErrs = append(allErrs, errs...)
 		}
 		if len(warns) != 0 {
 			warnings = append(warnings, warns...)
 		}
+		cliqueNames = append(cliqueNames, cliqueTemplateSpec.Name)
+		cliqueRoles = append(cliqueRoles, cliqueTemplateSpec.Spec.RoleName)
 		schedulerNames = append(schedulerNames, cliqueTemplateSpec.Spec.PodSpec.SchedulerName)
 	}
 
@@ -158,6 +143,31 @@ func (v *pgsValidator) validatePodCliqueTemplates(fldPath *field.Path) ([]string
 	}
 
 	return warnings, allErrs
+}
+
+func (v *pgsValidator) validatePodCliqueNameConstrains(fldPath *field.Path, cliqueTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec, scalingGroupCliqueNames sets.Set[string]) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if err := apivalidation.NameIsDNSSubdomain(cliqueTemplateSpec.Name, false); err != nil {
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), cliqueTemplateSpec.Name,
+			"invalid PodCliqueTemplateSpec name, must be a valid DNS subdomain"))
+	}
+
+	// Only validate pod name constraints for PodCliques that are NOT part of any scaling group
+	// any pod clique that is part of scaling groups will be checked as part of scaling group pod name constraints.
+	if !scalingGroupCliqueNames.Has(cliqueTemplateSpec.Name) {
+		allErrs = append(allErrs, validateStandalonePodClique(fldPath, v, cliqueTemplateSpec)...)
+	}
+	return allErrs
+}
+
+func validateStandalonePodClique(fldPath *field.Path, v *pgsValidator, cliqueTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if err := validatePodNameConstraints(v.pgs.Name, "", cliqueTemplateSpec.Name); err != nil {
+		// add error to each of filed paths that compose the podName in case of a PodCliqueTemplateSpec
+		allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), cliqueTemplateSpec.Name, err.Error()))
+		allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), v.pgs.Name, err.Error()))
+	}
+	return allErrs
 }
 
 func (v *pgsValidator) validatePodGangSchedulingPolicyConfig(schedulingPolicyConfig *grovecorev1alpha1.SchedulingPolicyConfig, fldPath *field.Path) field.ErrorList {
@@ -191,7 +201,6 @@ func (v *pgsValidator) validatePodCliqueScalingGroupConfigs(fldPath *field.Path)
 		// validate that scaling groups only contains clique names that are defined in the PodGangSet.
 		allErrs = append(allErrs, v.validateScalingGroupPodCliqueNames(scalingGroupConfig.Name, allPodGangSetCliqueNames,
 			scalingGroupConfig.CliqueNames, fldPath.Child("cliqueNames"), groupNameFiledPath)...)
-
 	}
 
 	// validate that the scaling group names are unique
@@ -225,7 +234,8 @@ func (v *pgsValidator) validateTerminationDelay(fldPath *field.Path) field.Error
 	return allErrs
 }
 
-func (v *pgsValidator) validatePodCliqueTemplateSpec(cliqueTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec, fldPath *field.Path) ([]string, field.ErrorList) {
+func (v *pgsValidator) validatePodCliqueTemplateSpec(cliqueTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec,
+	fldPath *field.Path, scalingGroupCliqueNames sets.Set[string]) ([]string, field.ErrorList) {
 	allErrs := field.ErrorList{}
 
 	allErrs = append(allErrs, validateNonEmptyStringField(cliqueTemplateSpec.Name, fldPath.Child("name"))...)
@@ -236,6 +246,7 @@ func (v *pgsValidator) validatePodCliqueTemplateSpec(cliqueTemplateSpec *groveco
 	if len(errs) != 0 {
 		allErrs = append(allErrs, errs...)
 	}
+	allErrs = append(allErrs, v.validatePodCliqueNameConstrains(fldPath, cliqueTemplateSpec, scalingGroupCliqueNames)...)
 
 	return warnings, allErrs
 }
@@ -314,12 +325,9 @@ func (v *pgsValidator) checkNetworkPackGroupConfigsForPartialPCSGInclusions(fldP
 func (v *pgsValidator) getScalingGroupCliqueNames() sets.Set[string] {
 	scalingGroupCliqueNames := sets.New[string]()
 	for _, scalingGroupConfig := range v.pgs.Spec.Template.PodCliqueScalingGroupConfigs {
-		for _, cliqueName := range scalingGroupConfig.CliqueNames {
-			scalingGroupCliqueNames.Insert(cliqueName)
-		}
+		scalingGroupCliqueNames.Insert(scalingGroupConfig.CliqueNames...)
 	}
 	return scalingGroupCliqueNames
-
 }
 
 // checks if the PodClique names specified in PodCliqueScalingGroupConfig refer to a defined clique in the PodGangSet.
