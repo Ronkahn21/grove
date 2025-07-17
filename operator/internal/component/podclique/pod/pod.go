@@ -214,7 +214,7 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 			Name: envVarGrovePGSName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "metadata.labels['app.kubernetes.io/part-of']",
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPartOfKey),
 				},
 			},
 		},
@@ -222,7 +222,7 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 			Name: envVarGrovePGSIndex,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "metadata.labels['grove.io/podgangset-replica-index']",
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodGangSetReplicaIndex),
 				},
 			},
 		},
@@ -230,7 +230,7 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 			Name: envVarGrovePCLQName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "metadata.labels['grove.io/podclique']",
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueName),
 				},
 			},
 		},
@@ -250,7 +250,7 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 			Name: envVarGrovePCSGName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "metadata.labels['grove.io/podcliquescalinggroup']",
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroup),
 				},
 			},
 		}
