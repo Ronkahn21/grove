@@ -65,6 +65,15 @@ const (
 	podGangSchedulingGate = "grove.io/podgang-pending-creation"
 )
 
+// constants for Grove environment variables
+const (
+	envVarGrovePGSName  = "GROVE_PGS_NAME"
+	envVarGrovePGSIndex = "GROVE_PGS_INDEX"
+	envVarGrovePCLQName = "GROVE_PCLQ_NAME"
+	envVarGrovePCSGName = "GROVE_PCSG_NAME"
+	envVarPodNamespace  = "POD_NAMESPACE"
+)
+
 type _resource struct {
 	client        client.Client
 	scheme        *runtime.Scheme
@@ -147,6 +156,10 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 		)
 	}
 	pod.Spec = *pclq.Spec.PodSpec.DeepCopy()
+
+	// Add Grove environment variables using Downward API
+	r.addGroveEnvironmentVariables(pod, pclq)
+
 	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
 
 	return nil
@@ -192,4 +205,60 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string) (map[string
 			grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
 			grovecorev1alpha1.LabelPodGangName:            podGangName,
 		}), nil
+}
+
+// addGroveEnvironmentVariables adds Grove-specific environment variables using the Downward API
+func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecorev1alpha1.PodClique) {
+	groveEnvVars := []corev1.EnvVar{
+		{
+			Name: envVarGrovePGSName,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.labels['app.kubernetes.io/part-of']",
+				},
+			},
+		},
+		{
+			Name: envVarGrovePGSIndex,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.labels['grove.io/podgangset-replica-index']",
+				},
+			},
+		},
+		{
+			Name: envVarGrovePCLQName,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.labels['grove.io/podclique']",
+				},
+			},
+		},
+		{
+			Name: envVarPodNamespace,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.namespace",
+				},
+			},
+		},
+	}
+
+	// Add GROVE_PCSG_NAME only if this pod is part of a PodCliqueScalingGroup
+	if _, hasPCSGLabel := pclq.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
+		pcsgEnvVar := corev1.EnvVar{
+			Name: envVarGrovePCSGName,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.labels['grove.io/podcliquescalinggroup']",
+				},
+			},
+		}
+		groveEnvVars = append(groveEnvVars, pcsgEnvVar)
+	}
+
+	// Add Grove environment variables to all containers in the pod
+	for i := range pod.Spec.Containers {
+		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, groveEnvVars...)
+	}
 }
