@@ -36,6 +36,10 @@ const (
 	LabelPodCliqueScalingGroup = "grove.io/podcliquescalinggroup"
 	// LabelPodGangName is a key for a label that sets the PodGang name.
 	LabelPodGangName = "grove.io/podgang"
+	// LabelPodCliqueReplicaIndex is a key for a label that sets the replica index of a PodClique within PCSG.
+	LabelPodCliqueReplicaIndex = "grove.io/podclique-replica-index"
+	// LabelPodCliqueScalingGroupReplicaIndex is a key for a label that sets the replica index of a PCSG within PodGangSet.
+	LabelPodCliqueScalingGroupReplicaIndex = "grove.io/podcliquescalinggroup-replica-index"
 )
 
 // Constants for finalizers.

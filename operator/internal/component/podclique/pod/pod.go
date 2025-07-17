@@ -71,6 +71,8 @@ const (
 	envVarGrovePGSIndex = "GROVE_PGS_INDEX"
 	envVarGrovePCLQName = "GROVE_PCLQ_NAME"
 	envVarGrovePCSGName = "GROVE_PCSG_NAME"
+	envVarGrovePCLQIndex = "GROVE_PCLQ_INDEX"
+	envVarGrovePCSGIndex = "GROVE_PCSG_INDEX"
 	envVarPodNamespace  = "POD_NAMESPACE"
 )
 
@@ -135,7 +137,46 @@ func (r _resource) Sync(ctx context.Context, logger logr.Logger, pclq *grovecore
 }
 
 func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName string, pod *corev1.Pod) error {
-	labels, err := getLabels(pclq.ObjectMeta, podGangName)
+	// Extract PGS replica index from PodClique name for now (will be replaced with direct parameter)
+	pgsName := k8sutils.GetFirstOwnerName(pclq.ObjectMeta)
+	pgsReplicaIndex, err := utils.GetPodGangSetReplicaIndexFromPodCliqueFQN(pgsName, pclq.Name)
+	if err != nil {
+		return groveerr.WrapError(err,
+			errCodeSyncPod,
+			component.OperationSync,
+			fmt.Sprintf("error extracting PGS replica index for PodClique %v", client.ObjectKeyFromObject(pclq)),
+		)
+	}
+	
+	// For PCSG pods, extract indices - for now using the utility functions
+	var pclqReplicaIndex *int
+	var pcsgReplicaIndex *int
+	
+	if pcsgName, hasPCSGLabel := pclq.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
+		// Extract PodClique replica index within PCSG
+		pclqIdx, err := utils.GetPodCliqueReplicaIndexFromPodCliqueFQN(pgsName, pclq.Name)
+		if err != nil {
+			return groveerr.WrapError(err,
+				errCodeSyncPod,
+				component.OperationSync,
+				fmt.Sprintf("error extracting PodClique replica index for PCSG PodClique %v", client.ObjectKeyFromObject(pclq)),
+			)
+		}
+		pclqReplicaIndex = &pclqIdx
+		
+		// Extract PCSG replica index within PGS
+		pcsgIdx, err := utils.GetPCSGReplicaIndexFromPCSGFQN(pgsName, pcsgName)
+		if err != nil {
+			return groveerr.WrapError(err,
+				errCodeSyncPod,
+				component.OperationSync,
+				fmt.Sprintf("error extracting PCSG replica index for PCSG PodClique %v", client.ObjectKeyFromObject(pclq)),
+			)
+		}
+		pcsgReplicaIndex = &pcsgIdx
+	}
+	
+	labels, err := getLabels(pclq.ObjectMeta, podGangName, pgsReplicaIndex, pclqReplicaIndex, pcsgReplicaIndex)
 	if err != nil {
 		return groveerr.WrapError(err,
 			errCodeSyncPod,
@@ -191,20 +232,29 @@ func getSelectorLabelsForPods(pclqObjectMeta metav1.ObjectMeta) map[string]strin
 	)
 }
 
-func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string) (map[string]string, error) {
+func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaIndex int, pclqReplicaIndex *int, pcsgReplicaIndex *int) (map[string]string, error) {
 	pgsName := k8sutils.GetFirstOwnerName(pclqObjectMeta)
-	pgsReplicaIndex, err := utils.GetPodGangSetReplicaIndexFromPodCliqueFQN(pgsName, pclqObjectMeta.Name)
-	if err != nil {
-		return nil, err
+	
+	labels := map[string]string{
+		grovecorev1alpha1.LabelPodCliqueName:          pclqObjectMeta.Name,
+		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
+		grovecorev1alpha1.LabelPodGangName:            podGangName,
 	}
+	
+	// Add PCSG-specific labels if this PodClique is part of a PCSG
+	if _, hasPCSGLabel := pclqObjectMeta.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
+		if pclqReplicaIndex != nil {
+			labels[grovecorev1alpha1.LabelPodCliqueReplicaIndex] = strconv.Itoa(*pclqReplicaIndex)
+		}
+		if pcsgReplicaIndex != nil {
+			labels[grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex] = strconv.Itoa(*pcsgReplicaIndex)
+		}
+	}
+	
 	return lo.Assign(
 		k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsName),
 		pclqObjectMeta.Labels,
-		map[string]string{
-			grovecorev1alpha1.LabelPodCliqueName:          pclqObjectMeta.Name,
-			grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
-			grovecorev1alpha1.LabelPodGangName:            podGangName,
-		}), nil
+		labels), nil
 }
 
 // addGroveEnvironmentVariables adds Grove-specific environment variables using the Downward API
@@ -244,21 +294,39 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 		},
 	}
 
-	// Add GROVE_PCSG_NAME only if this pod is part of a PodCliqueScalingGroup
+	// Add GROVE_PCSG_NAME and additional PCSG-specific env vars only if this pod is part of a PodCliqueScalingGroup
 	if _, hasPCSGLabel := pclq.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
-		pcsgEnvVar := corev1.EnvVar{
-			Name: envVarGrovePCSGName,
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroup),
+		pcsgEnvVars := []corev1.EnvVar{
+			{
+				Name: envVarGrovePCSGName,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroup),
+					},
+				},
+			},
+			{
+				Name: envVarGrovePCLQIndex,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueReplicaIndex),
+					},
+				},
+			},
+			{
+				Name: envVarGrovePCSGIndex,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex),
+					},
 				},
 			},
 		}
-		groveEnvVars = append(groveEnvVars, pcsgEnvVar)
+		groveEnvVars = append(groveEnvVars, pcsgEnvVars...)
 	}
 
 	// Add Grove environment variables to all containers in the pod
 	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, groveEnvVars...)
+		pod.Spec.Containers[i].Env = utils.MergeEnvVars(pod.Spec.Containers[i].Env, groveEnvVars)
 	}
 }
