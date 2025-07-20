@@ -26,7 +26,6 @@ import (
 	groveerr "github.com/NVIDIA/grove/operator/internal/errors"
 	"github.com/NVIDIA/grove/operator/internal/utils"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
-
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
@@ -39,18 +38,15 @@ import (
 
 // constants for error codes
 const (
-	errCodeGetPod                             grovecorev1alpha1.ErrorCode = "ERR_GET_POD"
-	errCodeSyncPod                            grovecorev1alpha1.ErrorCode = "ERR_SYNC_POD"
-	errCodeDeletePod                          grovecorev1alpha1.ErrorCode = "ERR_DELETE_POD"
-	errCodeGetPodGangSet                      grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANGSET"
-	errCodeGetPodGang                         grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANG"
-	errCodeListPod                            grovecorev1alpha1.ErrorCode = "ERR_LIST_POD"
-	errCodeGetPodCliqueScalingGroup           grovecorev1alpha1.ErrorCode = "ERR_GET_PODCLIQUESCALINGGROUP"
-	errCodeMissingPodGangSetReplicaIndexLabel grovecorev1alpha1.ErrorCode = "ERR_MISSING_PODGANGSET_REPLICA_INDEX_LABEL"
-	errCodeInvalidPodGangSetReplicaLabelValue grovecorev1alpha1.ErrorCode = "ERR_INVALID_PODGANGSET_REPLICA_LABEL_VALUE"
-	errCodeRemovePodSchedulingGate            grovecorev1alpha1.ErrorCode = "ERR_REMOVE_POD_SCHEDULING_GATE"
-	errCodeCreatePods                         grovecorev1alpha1.ErrorCode = "ERR_CREATE_PODS"
-	errCodeMissingPodGangLabelOnPCLQ          grovecorev1alpha1.ErrorCode = "ERR_MISSING_PODGANG_LABEL_ON_PODCLIQUE"
+	errCodeGetPod                    grovecorev1alpha1.ErrorCode = "ERR_GET_POD"
+	errCodeSyncPod                   grovecorev1alpha1.ErrorCode = "ERR_SYNC_POD"
+	errCodeDeletePod                 grovecorev1alpha1.ErrorCode = "ERR_DELETE_POD"
+	errCodeGetPodGangSet             grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANGSET"
+	errCodeGetPodGang                grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANG"
+	errCodeListPod                   grovecorev1alpha1.ErrorCode = "ERR_LIST_POD"
+	errCodeRemovePodSchedulingGate   grovecorev1alpha1.ErrorCode = "ERR_REMOVE_POD_SCHEDULING_GATE"
+	errCodeCreatePods                grovecorev1alpha1.ErrorCode = "ERR_CREATE_PODS"
+	errCodeMissingPodGangLabelOnPCLQ grovecorev1alpha1.ErrorCode = "ERR_MISSING_PODGANG_LABEL_ON_PODCLIQUE"
 )
 
 // constants used for pod events
@@ -67,13 +63,11 @@ const (
 
 // constants for Grove environment variables
 const (
-	envVarGrovePGSName  = "GROVE_PGS_NAME"
-	envVarGrovePGSIndex = "GROVE_PGS_INDEX"
-	envVarGrovePCLQName = "GROVE_PCLQ_NAME"
-	envVarGrovePCSGName = "GROVE_PCSG_NAME"
-	envVarGrovePCLQIndex = "GROVE_PCLQ_INDEX"
-	envVarGrovePCSGIndex = "GROVE_PCSG_INDEX"
-	envVarPodNamespace  = "POD_NAMESPACE"
+	envVarGrovePGSName         = "GROVE_PGS_NAME"
+	envVarGrovePGSIndex        = "GROVE_PGS_INDEX"
+	envVarGrovePCLQName        = "GROVE_PCLQ_NAME"
+	envVarGrovePCLQIndex       = "GROVE_PCLQ_INDEX"
+	envVarGroveHeadlessService = "GROVE_HEADLESS_SERVICE"
 )
 
 type _resource struct {
@@ -147,36 +141,8 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 			fmt.Sprintf("error extracting PGS replica index for PodClique %v", client.ObjectKeyFromObject(pclq)),
 		)
 	}
-	
-	// For PCSG pods, extract indices - for now using the utility functions
-	var pclqReplicaIndex *int
-	var pcsgReplicaIndex *int
-	
-	if pcsgName, hasPCSGLabel := pclq.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
-		// Extract PodClique replica index within PCSG
-		pclqIdx, err := utils.GetPodCliqueReplicaIndexFromPodCliqueFQN(pgsName, pclq.Name)
-		if err != nil {
-			return groveerr.WrapError(err,
-				errCodeSyncPod,
-				component.OperationSync,
-				fmt.Sprintf("error extracting PodClique replica index for PCSG PodClique %v", client.ObjectKeyFromObject(pclq)),
-			)
-		}
-		pclqReplicaIndex = &pclqIdx
-		
-		// Extract PCSG replica index within PGS
-		pcsgIdx, err := utils.GetPCSGReplicaIndexFromPCSGFQN(pgsName, pcsgName)
-		if err != nil {
-			return groveerr.WrapError(err,
-				errCodeSyncPod,
-				component.OperationSync,
-				fmt.Sprintf("error extracting PCSG replica index for PCSG PodClique %v", client.ObjectKeyFromObject(pclq)),
-			)
-		}
-		pcsgReplicaIndex = &pcsgIdx
-	}
-	
-	labels, err := getLabels(pclq.ObjectMeta, podGangName, pgsReplicaIndex, pclqReplicaIndex, pcsgReplicaIndex)
+
+	labels, err := getLabels(pclq.ObjectMeta, podGangName, pgsReplicaIndex)
 	if err != nil {
 		return groveerr.WrapError(err,
 			errCodeSyncPod,
@@ -198,8 +164,7 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 	}
 	pod.Spec = *pclq.Spec.PodSpec.DeepCopy()
 
-	// Add Grove environment variables using Downward API
-	r.addGroveEnvironmentVariables(pod, pclq)
+	r.addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex)
 
 	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
 
@@ -232,33 +197,22 @@ func getSelectorLabelsForPods(pclqObjectMeta metav1.ObjectMeta) map[string]strin
 	)
 }
 
-func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaIndex int, pclqReplicaIndex *int, pcsgReplicaIndex *int) (map[string]string, error) {
+func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaIndex int) (map[string]string, error) {
 	pgsName := k8sutils.GetFirstOwnerName(pclqObjectMeta)
-	
+
 	labels := map[string]string{
 		grovecorev1alpha1.LabelPodCliqueName:          pclqObjectMeta.Name,
 		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
 		grovecorev1alpha1.LabelPodGangName:            podGangName,
 	}
-	
-	// Add PCSG-specific labels if this PodClique is part of a PCSG
-	if _, hasPCSGLabel := pclqObjectMeta.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
-		if pclqReplicaIndex != nil {
-			labels[grovecorev1alpha1.LabelPodCliqueReplicaIndex] = strconv.Itoa(*pclqReplicaIndex)
-		}
-		if pcsgReplicaIndex != nil {
-			labels[grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex] = strconv.Itoa(*pcsgReplicaIndex)
-		}
-	}
-	
 	return lo.Assign(
 		k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsName),
 		pclqObjectMeta.Labels,
 		labels), nil
 }
 
-// addGroveEnvironmentVariables adds Grove-specific environment variables using the Downward API
-func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecorev1alpha1.PodClique) {
+// addGroveEnvironmentVariables adds Grove-specific environment variables
+func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaIndex int) {
 	groveEnvVars := []corev1.EnvVar{
 		{
 			Name: envVarGrovePGSName,
@@ -277,6 +231,14 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 			},
 		},
 		{
+			Name: envVarGrovePCLQIndex,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueReplicaIndex),
+				},
+			},
+		},
+		{
 			Name: envVarGrovePCLQName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
@@ -285,44 +247,11 @@ func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pclq *grovecore
 			},
 		},
 		{
-			Name: envVarPodNamespace,
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "metadata.namespace",
-				},
-			},
+			Name: envVarGroveHeadlessService,
+			Value: grovecorev1alpha1.GenerateHeadlessServiceAddress(
+				grovecorev1alpha1.ResourceNameReplica{Name: pgsName, Replica: pgsReplicaIndex},
+				pod.Namespace),
 		},
-	}
-
-	// Add GROVE_PCSG_NAME and additional PCSG-specific env vars only if this pod is part of a PodCliqueScalingGroup
-	if _, hasPCSGLabel := pclq.Labels[grovecorev1alpha1.LabelPodCliqueScalingGroup]; hasPCSGLabel {
-		pcsgEnvVars := []corev1.EnvVar{
-			{
-				Name: envVarGrovePCSGName,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroup),
-					},
-				},
-			},
-			{
-				Name: envVarGrovePCLQIndex,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueReplicaIndex),
-					},
-				},
-			},
-			{
-				Name: envVarGrovePCSGIndex,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex),
-					},
-				},
-			},
-		}
-		groveEnvVars = append(groveEnvVars, pcsgEnvVars...)
 	}
 
 	// Add Grove environment variables to all containers in the pod
