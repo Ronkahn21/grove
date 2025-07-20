@@ -33,6 +33,12 @@ func GenerateHeadlessServiceName(pgsNameReplica ResourceNameReplica) string {
 	return fmt.Sprintf("%s-%d", pgsNameReplica.Name, pgsNameReplica.Replica)
 }
 
+// GenerateHeadlessServiceAddress generates a headless service address based on the PodGangSet name, replica index, and namespace.
+// The address is in the format: <headless-service-name>.<namespace>.svc.cluster.local
+func GenerateHeadlessServiceAddress(pgsNameReplica ResourceNameReplica, namespace string) string {
+	return fmt.Sprintf("%s.%s.svc.cluster.local", GenerateHeadlessServiceName(pgsNameReplica), namespace)
+}
+
 // GeneratePodRoleName generates a Pod role name based on the PodGangSet name.
 // This role will be associated to all Pods within a PodGangSet.
 func GeneratePodRoleName(pgsName string) string {

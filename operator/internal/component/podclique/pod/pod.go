@@ -164,8 +164,7 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 	}
 	pod.Spec = *pclq.Spec.PodSpec.DeepCopy()
 
-	r.addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex)
-
+	addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex)
 	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
 
 	return nil
@@ -212,7 +211,7 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaI
 }
 
 // addGroveEnvironmentVariables adds Grove-specific environment variables
-func (r _resource) addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaIndex int) {
+func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaIndex int) {
 	groveEnvVars := []corev1.EnvVar{
 		{
 			Name: envVarGrovePGSName,
