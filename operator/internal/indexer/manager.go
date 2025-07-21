@@ -1,106 +1,139 @@
 package indexer
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-type bidirectionalMap struct {
-	podToIndex  map[string]int
-	indexToPod  map[int]string
-	replicaSize int
+type indexTracker struct {
+	podToIndex        map[string]int
+	usedIndices       *list.List
+	highestContinuous *list.Element
 }
 
-func newBidirectionalMap(replicaSize int) *bidirectionalMap {
-	return &bidirectionalMap{
-		podToIndex:  make(map[string]int),
-		indexToPod:  make(map[int]string),
-		replicaSize: replicaSize,
+func newIndexTracker(indexedPods map[string]int) *indexTracker {
+	tracker := &indexTracker{
+		podToIndex:        indexedPods,
+		usedIndices:       list.New(),
+		highestContinuous: nil,
 	}
+
+	indexArray := slices.Collect(maps.Values(indexedPods))
+	slices.Sort(indexArray)
+	// Add indices to usedIndices list in sorted order
+	for _, index := range indexArray {
+		tracker.usedIndices.PushBack(index)
+	}
+	// Initialize highestContinuous
+	tracker.findZeroFirstHighestContinuous()
+
+	return tracker
 }
 
-func (b *bidirectionalMap) assignIndex(podName string, index int) {
-	// Remove any existing assignment for this pod
-	if existingIndex, exists := b.podToIndex[podName]; exists {
-		delete(b.indexToPod, existingIndex)
-	}
-
-	// Remove any existing pod at this index
-	if existingPod, exists := b.indexToPod[index]; exists {
-		delete(b.podToIndex, existingPod)
-	}
-
-	// Make new assignment
-	b.podToIndex[podName] = index
-	b.indexToPod[index] = podName
-}
-
-func (b *bidirectionalMap) getPodIndex(podName string) (int, bool) {
-	index, exists := b.podToIndex[podName]
+func (it *indexTracker) GetPodIndex(podName string) (int, bool) {
+	index, exists := it.podToIndex[podName]
 	return index, exists
 }
 
-func (b *bidirectionalMap) isIndexUsed(index int) bool {
-	_, exists := b.indexToPod[index]
-	return exists
+func (it *indexTracker) AssignAvailableIndex(podName string) int {
+	if index, exists := it.GetPodIndex(podName); exists {
+		return index // Pod already has an index assigned
+	}
+	defer it.findZeroFirstHighestContinuous()
+
+	if it.usedIndices.Len() == 0 || it.highestContinuous == nil {
+		return it.insertInitIndexToFront(podName)
+	}
+	return it.insertAfterHighestContinues(podName)
 }
 
-func (b *bidirectionalMap) getAvailableIndex() (int, error) {
-	// Find lowest available index within replica size
-	for i := 0; i < b.replicaSize; i++ {
-		if !b.isIndexUsed(i) {
-			return i, nil
-		}
-	}
+func (it *indexTracker) insertAfterHighestContinues(podName string) int {
+	nextIndex := it.highestContinuous.Value.(int) + 1
+	// insert the pod after the next highest continuous index
+	it.usedIndices.InsertAfter(nextIndex, it.highestContinuous)
+	it.podToIndex[podName] = nextIndex
+	return nextIndex
+}
 
-	// All indices within replica size are used - this is an error
-	return -1, errors.New("no available index within replica size")
+func (it *indexTracker) insertInitIndexToFront(podName string) int {
+	it.highestContinuous = it.usedIndices.PushFront(0)
+	it.podToIndex[podName] = 0
+	return 0 // First pod gets index 0
+}
+
+func (it *indexTracker) findZeroFirstHighestContinuous() {
+	// handle case where first index is not 0
+	first := it.usedIndices.Front()
+	if isElementZero(first) {
+		return
+	}
+	// If first element is 0, we need to find the end of the continuous sequence
+	if it.highestContinuous != nil {
+		first = it.highestContinuous
+	}
+	current := findNewHighestContinuesPointer(first)
+
+	it.highestContinuous = current
+}
+
+func isElementZero(first *list.Element) bool {
+	return first == nil || first.Value.(int) != 0
+}
+
+func findNewHighestContinuesPointer(element *list.Element) *list.Element {
+	// Find end of continuous sequence starting from 0
+	current := element
+	for current != nil {
+		next := current.Next()
+		if next == nil || next.Value.(int) != current.Value.(int)+1 {
+			break
+		}
+		current = next
+	}
+	return current
 }
 
 // IndexManager manages pod indices for PodCliques.
 // Prioritizes filling lower indices first.
 type IndexManager struct {
-	biMap *bidirectionalMap
+	tracker *indexTracker
 }
 
-func NewIndexManager(replicaSize int, podIndexMappings map[string]int) *IndexManager {
-	im := &IndexManager{
-		biMap: newBidirectionalMap(replicaSize),
+// NewIndexManager creates a new IndexManager with pre-existing pod index mappings.
+func NewIndexManager(podIndexMappings map[string]int) *IndexManager {
+	return &IndexManager{
+		tracker: newIndexTracker(podIndexMappings),
 	}
-
-	for podName, index := range podIndexMappings {
-		im.biMap.assignIndex(podName, index)
-	}
-
-	return im
 }
 
+// GetIndex returns the index for the given pod, assigning a new one if needed.
 func (im *IndexManager) GetIndex(pod *corev1.Pod) (int, error) {
 	if pod == nil {
 		return -1, errors.New("pod is nil")
 	}
 
 	// Return existing index if pod is already known
-	if existingIndex, exists := im.biMap.getPodIndex(pod.Name); exists {
+	if existingIndex, exists := im.tracker.GetPodIndex(pod.Name); exists {
 		return existingIndex, nil
 	}
 
 	// Assign new index
-	newIndex, err := im.biMap.getAvailableIndex()
-	if err != nil {
-		return -1, fmt.Errorf("failed to assign index to pod %s: %w", pod.Name, err)
-	}
-	im.biMap.assignIndex(pod.Name, newIndex)
+	newIndex := im.tracker.AssignAvailableIndex(pod.Name)
 
 	return newIndex, nil
 }
 
-func ExtractIndexFromHostname(hostname string) (int, error) {
+// extractIndexFromHostname extracts the numeric index from a pod hostname.
+func extractIndexFromHostname(hostname string) (int, error) {
 	if hostname == "" {
 		return -1, errors.New("hostname is empty")
 	}
@@ -119,36 +152,77 @@ func ExtractIndexFromHostname(hostname string) (int, error) {
 	return index, nil
 }
 
-func InitIndexManger(existingPods []*corev1.Pod, expectedPodsSize int, logger logr.Logger) *IndexManager {
-	im := &IndexManager{
-		biMap: newBidirectionalMap(expectedPodsSize),
-	}
+// InitIndexManger creates a new IndexManager initialized with existing pods.
+func InitIndexManger(existingPods []*corev1.Pod, logger logr.Logger) *IndexManager {
+	indexedPods := make(map[string]int, len(existingPods))
+	usedIndices := sets.New[int]()
 
-	// Process pods in order to maintain "last wins" behavior for duplicate indices
 	for _, pod := range existingPods {
 		if pod == nil {
 			continue
 		}
-		if pod.Spec.Hostname == "" {
+		index, err := extractIndexFromHostname(pod.Spec.Hostname)
+		if validationErr := validateHostNameIndex(err, pod, index, indexedPods, usedIndices); validationErr != nil {
+			logger.Error(validationErr, "invalid hostname index",
+				"pod", pod.Name, "hostname", pod.Spec.Hostname)
 			continue
 		}
-		index, err := ExtractIndexFromHostname(pod.Spec.Hostname)
-		// for now, we ignore the error and continue processing other pods
-		// in the future we might want to handle this differently
-		// e.g. by marking deleted pods and creating new pods
-		// with valid indexes
-		if err != nil {
-			logger.Error(err, "Failed to extract index from pod hostname",
-				"podName", pod.Name, "podHostname", pod.Spec.Hostname)
-			continue
-		}
-		if index < 0 || index >= expectedPodsSize {
-			logger.Error(nil, "Extracted index is out of bounds for PodClique replicas",
-				"podName", pod.Name, "podHostname", pod.Spec.Hostname,
-				"index", index, "replicas", expectedPodsSize)
-			continue
-		}
-		im.biMap.assignIndex(pod.Name, index)
+
+		indexedPods[pod.Name] = index
+		usedIndices.Insert(index)
 	}
-	return im
+
+	return NewIndexManager(indexedPods)
+}
+
+// validateExtractionError checks if index extraction from hostname failed
+func validateExtractionError(err error, hostname string) error {
+	if err != nil {
+		return fmt.Errorf("failed to extract index from pod hostname '%s': %w", hostname, err)
+	}
+	return nil
+}
+
+// validateIndexValue checks if the extracted index value is valid
+func validateIndexValue(index int, hostname string) error {
+	if index < 0 {
+		return fmt.Errorf("extracted index %d from pod hostname '%s' is negative", index, hostname)
+	}
+	return nil
+}
+
+// validateIndexUniqueness checks if the index is already used by another pod
+func validateIndexUniqueness(index int, hostname string, usedIndex sets.Set[int]) error {
+	if usedIndex.Has(index) {
+		return fmt.Errorf("pod hostname '%s' has duplicate index %d", hostname, index)
+	}
+	return nil
+}
+
+// validatePodUniqueness checks if the pod name is already indexed
+func validatePodUniqueness(podName string, hostname string, indexedPods map[string]int) error {
+	if _, exists := indexedPods[podName]; exists {
+		return fmt.Errorf("pod hostname '%s' is already indexed, duplicate", hostname)
+	}
+	return nil
+}
+
+func validateHostNameIndex(err error, pod *corev1.Pod, index int,
+	indexedPods map[string]int, usedIndex sets.Set[int]) error {
+	hostname := pod.Spec.Hostname
+
+	// Chain validation checks - return first error encountered
+	validators := []func() error{
+		func() error { return validateExtractionError(err, hostname) },
+		func() error { return validateIndexValue(index, hostname) },
+		func() error { return validateIndexUniqueness(index, hostname, usedIndex) },
+		func() error { return validatePodUniqueness(pod.Name, hostname, indexedPods) },
+	}
+
+	for _, validate := range validators {
+		if validationErr := validate(); validationErr != nil {
+			return validationErr
+		}
+	}
+	return nil
 }

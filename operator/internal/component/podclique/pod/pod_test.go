@@ -192,7 +192,7 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				Spec: tt.pclq.Spec.PodSpec,
 			}
 
-			addGroveEnvironmentVariables(pod, "test-pgs", 0)
+			addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 
 			// Check that all containers have the expected environment variables
 			for _, container := range pod.Spec.Containers {
@@ -366,7 +366,7 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				Spec: tt.pclq.Spec.PodSpec,
 			}
 
-			addGroveEnvironmentVariables(pod, "test-pgs", 0)
+			addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 
 			// Check that all containers have the expected environment variables
 			for _, container := range pod.Spec.Containers {
@@ -383,14 +383,14 @@ func TestAddGroveEnvironmentVariables_Idempotent(t *testing.T) {
 	pod := createTestPod()
 
 	// Call addGroveEnvironmentVariables multiple times
-	addGroveEnvironmentVariables(pod, "test-pgs", 0)
+	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 	envVarsAfterFirst := make([]corev1.EnvVar, len(pod.Spec.Containers[0].Env))
 	copy(envVarsAfterFirst, pod.Spec.Containers[0].Env)
 
-	addGroveEnvironmentVariables(pod, "test-pgs", 0)
+	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 	envVarsAfterSecond := pod.Spec.Containers[0].Env
 
-	addGroveEnvironmentVariables(pod, "test-pgs", 0)
+	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 	envVarsAfterThird := pod.Spec.Containers[0].Env
 
 	// All calls should produce the same result
@@ -409,7 +409,7 @@ func TestAddGroveEnvironmentVariables_EmptyContainers(t *testing.T) {
 	}
 
 	// Should not panic with empty containers
-	addGroveEnvironmentVariables(pod, "test-pgs", 0)
+	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 	assert.Empty(t, pod.Spec.Containers)
 }
 
@@ -432,7 +432,7 @@ func TestAddGroveEnvironmentVariables_MultipleContainers(t *testing.T) {
 		},
 	}
 
-	addGroveEnvironmentVariables(pod, "test-pgs", 0)
+	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
 
 	// Both containers should have Grove environment variables
 	expectedEnvVars := []string{

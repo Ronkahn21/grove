@@ -246,7 +246,7 @@ func hasPodGangSchedulingGate(pod *corev1.Pod) bool {
 
 func (r _resource) createPods(ctx context.Context, logger logr.Logger, pclq *grovecorev1alpha1.PodClique, podGangName string, numPods int, existingPods []*corev1.Pod) (int, error) {
 	createTasks := make([]utils.Task, 0, numPods)
-	indexManager := indexer.InitIndexManger(existingPods, int(pclq.Spec.Replicas), logger)
+	indexManager := indexer.InitIndexManger(existingPods, logger)
 
 	for i := range numPods {
 		createTask := utils.Task{

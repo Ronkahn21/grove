@@ -69,6 +69,7 @@ const (
 	envVarGrovePCLQName        = "GROVE_PCLQ_NAME"
 	envVarGrovePCLQIndex       = "GROVE_PCLQ_INDEX"
 	envVarGroveHeadlessService = "GROVE_HEADLESS_SERVICE"
+	envVarGrovePodIndex        = "GROVE_PCLQ_POD_INDEX"
 )
 
 type _resource struct {
@@ -165,9 +166,9 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 	}
 	pod.Spec = *pclq.Spec.PodSpec.DeepCopy()
 
-	addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex)
-	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
 	podIndex, err := indexMg.GetIndex(pod)
+	addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex, podIndex)
+	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
 	if err != nil {
 		// should never happen we dont allow to manually set pods index
 		return groveerr.WrapError(err,
@@ -224,7 +225,7 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaI
 }
 
 // addGroveEnvironmentVariables adds Grove-specific environment variables
-func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaIndex int) {
+func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaIndex, podIndex int) {
 	groveEnvVars := []corev1.EnvVar{
 		{
 			Name: envVarGrovePGSName,
@@ -263,6 +264,10 @@ func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaInd
 			Value: grovecorev1alpha1.GenerateHeadlessServiceAddress(
 				grovecorev1alpha1.ResourceNameReplica{Name: pgsName, Replica: pgsReplicaIndex},
 				pod.Namespace),
+		},
+		{
+			Name:  envVarGrovePodIndex,
+			Value: strconv.Itoa(podIndex),
 		},
 	}
 

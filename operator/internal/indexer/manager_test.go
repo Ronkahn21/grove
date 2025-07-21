@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"slices"
 	"strconv"
 	"testing"
 
@@ -9,16 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Test utilities
-func createTestPod(name, hostname string, uid string) *corev1.Pod {
+func createDummyHostnameIndexTestPod(name, hostname string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
-			UID:  types.UID(uid),
 		},
 		Spec: corev1.PodSpec{
 			Hostname: hostname,
@@ -31,190 +30,170 @@ func createTestPodsWithIndices(indices []int) ([]*corev1.Pod, map[string]int) {
 	podIndexMap := make(map[string]int)
 	for i, idx := range indices {
 		name := "pod-" + string(rune('a'+i))
-		uid := "uid-" + string(rune('a'+i))
-		pods[i] = createTestPod(
-			name,
-			"test-clique-"+strconv.Itoa(idx),
-			uid,
-		)
+		pods[i] = createDummyHostnameIndexTestPod(name, "test-clique-"+strconv.Itoa(idx))
 		podIndexMap[name] = idx
 	}
 	return pods, podIndexMap
 }
 
-func assertBidirectionalConsistency(t *testing.T, biMap *bidirectionalMap) {
-	// Verify that both maps are consistent
-	for podName, index := range biMap.podToIndex {
-		mappedPod, exists := biMap.indexToPod[index]
-		assert.True(t, exists, "Index %d missing from indexToPod map", index)
-		assert.Equal(t, podName, mappedPod, "Inconsistent mapping for index %d", index)
+func assertIndexTrackerConsistency(t *testing.T, tracker *indexTracker) {
+	// Convert list to slice for comparison
+	usedInSlice := make([]int, 0, tracker.usedIndices.Len())
+	for elem := tracker.usedIndices.Front(); elem != nil; elem = elem.Next() {
+		usedInSlice = append(usedInSlice, elem.Value.(int))
 	}
 
-	for index, podName := range biMap.indexToPod {
-		mappedIndex, exists := biMap.podToIndex[podName]
-		assert.True(t, exists, "Pod %s missing from podToIndex map", podName)
-		assert.Equal(t, index, mappedIndex, "Inconsistent mapping for pod %s", podName)
+	// Get indices from map
+	usedFromMap := make([]int, 0, len(tracker.podToIndex))
+	for _, index := range tracker.podToIndex {
+		usedFromMap = append(usedFromMap, index)
+	}
+
+	// Sort both slices for comparison
+	assert.ElementsMatch(t, usedInSlice, usedFromMap, "Used indices list and map should match")
+
+	// Verify highestContinuous is correct
+	if tracker.highestContinuous != nil {
+		expectedContinuous := findHighestContinuousIndex(usedInSlice)
+		if expectedContinuous >= 0 {
+			assert.Equal(t, expectedContinuous, tracker.highestContinuous.Value.(int), "HighestContinuous should be correct")
+		}
 	}
 }
 
-// ==================== bidirectionalMap Tests ====================
+// Helper function to find the highest continuous index starting from 0
+func findHighestContinuousIndex(indices []int) int {
+	if len(indices) == 0 {
+		return -1
+	}
 
-func TestNewBidirectionalMap(t *testing.T) {
-	biMap := newBidirectionalMap(3)
+	// sort indices
+	sorted := make([]int, len(indices))
+	copy(sorted, indices)
+	slices.Sort(sorted)
 
-	assert.NotNil(t, biMap)
-	assert.Equal(t, 3, biMap.replicaSize)
-	assert.Empty(t, biMap.podToIndex)
-	assert.Empty(t, biMap.indexToPod)
-	assertBidirectionalConsistency(t, biMap)
+	// Find highest continuous starting from 0
+	if sorted[0] != 0 {
+		return -1
+	}
+
+	for i := 1; i < len(sorted); i++ {
+		if sorted[i] != sorted[i-1]+1 {
+			return sorted[i-1]
+		}
+	}
+
+	return sorted[len(sorted)-1]
 }
 
-func TestBidirectionalMap_AssignIndex(t *testing.T) {
-	biMap := newBidirectionalMap(5)
+// ==================== indexTracker Tests ====================
+
+func TestNewIndexTracker(t *testing.T) {
+	tracker := newIndexTracker(nil)
+
+	assert.NotNil(t, tracker)
+	assert.NotNil(t, tracker.usedIndices)
+	assert.Equal(t, 0, tracker.usedIndices.Len())
+	assert.Empty(t, tracker.podToIndex)
+	assert.Nil(t, tracker.highestContinuous)
+	assertIndexTrackerConsistency(t, tracker)
+}
+
+func TestIndexTracker_LoadExistingPodIndex(t *testing.T) {
 	name1 := "pod-1"
 	name2 := "pod-2"
 
-	// Assign new index to new pod
-	biMap.assignIndex(name1, 0)
-	index, exists := biMap.getPodIndex(name1)
+	// Create tracker with existing pod indices
+	indexedPods := map[string]int{
+		name1: 0,
+		name2: 1,
+	}
+	tracker := newIndexTracker(indexedPods)
+
+	// Verify pods are assigned correctly
+	index, exists := tracker.GetPodIndex(name1)
 	assert.True(t, exists)
 	assert.Equal(t, 0, index)
-	assert.True(t, biMap.isIndexUsed(0))
-	assertBidirectionalConsistency(t, biMap)
 
-	// Assign different pod to same index (should replace)
-	biMap.assignIndex(name2, 0)
-	_, exists = biMap.getPodIndex(name1)
-	assert.False(t, exists, "Previous pod should be removed")
-	index, exists = biMap.getPodIndex(name2)
+	index, exists = tracker.GetPodIndex(name2)
 	assert.True(t, exists)
-	assert.Equal(t, 0, index)
-	assertBidirectionalConsistency(t, biMap)
+	assert.Equal(t, 1, index)
 
-	// Reassign existing pod to different index
-	biMap.assignIndex(name2, 2)
-	assert.False(t, biMap.isIndexUsed(0), "Previous index should be free")
-	index, exists = biMap.getPodIndex(name2)
-	assert.True(t, exists)
-	assert.Equal(t, 2, index)
-	assert.True(t, biMap.isIndexUsed(2))
-	assertBidirectionalConsistency(t, biMap)
+	// Next available should be 2
+	assert.Equal(t, 2, tracker.AssignAvailableIndex("test-pod"), "Next available should be 2")
+	assertIndexTrackerConsistency(t, tracker)
 }
 
-func TestBidirectionalMap_GetPodIndex(t *testing.T) {
-	biMap := newBidirectionalMap(3)
+func TestIndexTracker_GetPodIndex(t *testing.T) {
 	name := "test-pod"
 
 	// Non-existent pod
-	_, exists := biMap.getPodIndex(name)
+	tracker := newIndexTracker(nil)
+	_, exists := tracker.GetPodIndex(name)
 	assert.False(t, exists)
 
 	// Existing pod
-	biMap.assignIndex(name, 1)
-	index, exists := biMap.getPodIndex(name)
+	indexedPods := map[string]int{name: 1}
+	tracker = newIndexTracker(indexedPods)
+	index, exists := tracker.GetPodIndex(name)
 	assert.True(t, exists)
 	assert.Equal(t, 1, index)
 }
 
-func TestBidirectionalMap_IsIndexUsed(t *testing.T) {
-	biMap := newBidirectionalMap(3)
-	name := "test-pod"
-
-	// Unused index
-	assert.False(t, biMap.isIndexUsed(0))
-	assert.False(t, biMap.isIndexUsed(1))
-
-	// Used index
-	biMap.assignIndex(name, 1)
-	assert.False(t, biMap.isIndexUsed(0))
-	assert.True(t, biMap.isIndexUsed(1))
-	assert.False(t, biMap.isIndexUsed(2))
-}
-
-func TestBidirectionalMap_GetAvailableIndex_HoleFilling(t *testing.T) {
+func TestIndexTracker_HoleFilling(t *testing.T) {
 	tests := []struct {
 		name          string
-		replicaSize   int
 		usedIndices   []int
 		expectedIndex int
 		description   string
 	}{
 		{
-			name:          "empty map",
-			replicaSize:   3,
+			name:          "empty tracker",
 			usedIndices:   []int{},
 			expectedIndex: 0,
-			description:   "should return 0 for empty map",
+			description:   "should return 0 for empty tracker",
 		},
 		{
-			name:          "hole at beginning",
-			replicaSize:   5,
+			name:          "continuous from 0",
+			usedIndices:   []int{0, 1, 2},
+			expectedIndex: 3,
+			description:   "should return next after continuous sequence",
+		},
+		{
+			name:          "gap at beginning",
 			usedIndices:   []int{1, 2, 3},
 			expectedIndex: 0,
-			description:   "should fill hole at index 0",
+			description:   "should return 0 when no continuous sequence from 0",
 		},
 		{
-			name:          "hole in middle",
-			replicaSize:   5,
-			usedIndices:   []int{0, 2, 4},
-			expectedIndex: 1,
-			description:   "should fill first hole at index 1",
-		},
-		{
-			name:          "multiple holes",
-			replicaSize:   6,
-			usedIndices:   []int{1, 3, 5},
-			expectedIndex: 0,
-			description:   "should fill lowest hole at index 0",
-		},
-		{
-			name:          "hole at end of replica range",
-			replicaSize:   4,
-			usedIndices:   []int{0, 1, 3},
+			name:          "continuous with gap",
+			usedIndices:   []int{0, 1, 3, 4},
 			expectedIndex: 2,
-			description:   "should fill hole at index 2",
+			description:   "should extend continuous sequence from 0",
 		},
 		{
-			name:          "mix of in-range and out-of-range",
-			replicaSize:   3,
-			usedIndices:   []int{0, 2, 3, 5},
-			expectedIndex: 1,
-			description:   "should fill in-range hole first",
+			name:          "large gap",
+			usedIndices:   []int{0, 1, 2, 100, 200},
+			expectedIndex: 3,
+			description:   "should continue from highest continuous",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			biMap := newBidirectionalMap(tt.replicaSize)
-
-			// Assign used indices
+			// Load used indices
+			indexedPods := make(map[string]int)
 			for i, index := range tt.usedIndices {
 				name := "pod-" + string(rune('a'+i))
-				biMap.assignIndex(name, index)
+				indexedPods[name] = index
 			}
+			tracker := newIndexTracker(indexedPods)
 
-			actualIndex, err := biMap.getAvailableIndex()
-			require.NoError(t, err)
+			actualIndex := tracker.AssignAvailableIndex("test-pod")
 			assert.Equal(t, tt.expectedIndex, actualIndex, tt.description)
-			assertBidirectionalConsistency(t, biMap)
+			assertIndexTrackerConsistency(t, tracker)
 		})
 	}
-}
-
-func TestBidirectionalMap_GetAvailableIndex_NoAvailableIndex(t *testing.T) {
-	biMap := newBidirectionalMap(3)
-
-	// Use all indices within replica size
-	biMap.assignIndex("pod-a", 0)
-	biMap.assignIndex("pod-b", 1)
-	biMap.assignIndex("pod-c", 2)
-
-	// Should return error when no index available
-	_, err := biMap.getAvailableIndex()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no available index within replica size")
-
-	assertBidirectionalConsistency(t, biMap)
 }
 
 // ==================== extractIndexFromHostname Tests ====================
@@ -233,7 +212,7 @@ func TestExtractIndexFromHostname_Valid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.hostname, func(t *testing.T) {
-			index, err := ExtractIndexFromHostname(tt.hostname)
+			index, err := extractIndexFromHostname(tt.hostname)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected, index)
 		})
@@ -255,7 +234,7 @@ func TestExtractIndexFromHostname_Invalid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.description, func(t *testing.T) {
-			_, err := ExtractIndexFromHostname(tt.hostname)
+			_, err := extractIndexFromHostname(tt.hostname)
 			assert.Error(t, err, "should return error for: %s", tt.description)
 		})
 	}
@@ -264,11 +243,12 @@ func TestExtractIndexFromHostname_Invalid(t *testing.T) {
 // ==================== NewIndexManager Tests ====================
 
 func TestNewIndexManager_EmptyPods(t *testing.T) {
-	im := NewIndexManager(3, map[string]int{})
+	im := NewIndexManager(map[string]int{})
 
 	assert.NotNil(t, im)
-	assert.Equal(t, 3, im.biMap.replicaSize)
-	assertBidirectionalConsistency(t, im.biMap)
+	assert.NotNil(t, im.tracker)
+	assert.Equal(t, 0, im.tracker.usedIndices.Len())
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
 func TestNewIndexManager_ValidPods(t *testing.T) {
@@ -278,22 +258,22 @@ func TestNewIndexManager_ValidPods(t *testing.T) {
 		"pod-c": 4,
 	}
 
-	im := NewIndexManager(5, podIndexMap)
+	im := NewIndexManager(podIndexMap)
 
 	// Verify pods are assigned correctly
-	index, exists := im.biMap.getPodIndex("pod-a")
+	index, exists := im.tracker.GetPodIndex("pod-a")
 	assert.True(t, exists)
 	assert.Equal(t, 0, index)
 
-	index, exists = im.biMap.getPodIndex("pod-b")
+	index, exists = im.tracker.GetPodIndex("pod-b")
 	assert.True(t, exists)
 	assert.Equal(t, 2, index)
 
-	index, exists = im.biMap.getPodIndex("pod-c")
+	index, exists = im.tracker.GetPodIndex("pod-c")
 	assert.True(t, exists)
 	assert.Equal(t, 4, index)
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
 // ==================== GetIndex Tests ====================
@@ -302,28 +282,24 @@ func TestGetIndex_NewPods_HoleFilling(t *testing.T) {
 	tests := []struct {
 		name            string
 		existingIndices []int
-		replicaSize     int
 		expectedIndex   int
 		description     string
 	}{
 		{
 			name:            "fill hole at beginning",
 			existingIndices: []int{1, 2, 3},
-			replicaSize:     5,
 			expectedIndex:   0,
 			description:     "should assign index 0 when it's available",
 		},
 		{
 			name:            "fill first hole in middle",
 			existingIndices: []int{0, 2, 4},
-			replicaSize:     5,
 			expectedIndex:   1,
-			description:     "should assign index 1 (first available hole)",
+			description:     "should extend continuous sequence from 0 to 1",
 		},
 		{
 			name:            "fill multiple holes - choose lowest",
 			existingIndices: []int{1, 3, 5},
-			replicaSize:     6,
 			expectedIndex:   0,
 			description:     "should assign index 0 (lowest available)",
 		},
@@ -332,21 +308,21 @@ func TestGetIndex_NewPods_HoleFilling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, podIndexMap := createTestPodsWithIndices(tt.existingIndices)
-			im := NewIndexManager(tt.replicaSize, podIndexMap)
+			im := NewIndexManager(podIndexMap)
 
-			newPod := createTestPod("new-pod", "irrelevant", "new-uid")
+			newPod := createDummyHostnameIndexTestPod("new-pod", "irrelevant")
 			actualIndex, err := im.GetIndex(newPod)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedIndex, actualIndex, tt.description)
-			assertBidirectionalConsistency(t, im.biMap)
+			assertIndexTrackerConsistency(t, im.tracker)
 		})
 	}
 }
 
 func TestGetIndex_ExistingPods(t *testing.T) {
 	existingPods, podIndexMap := createTestPodsWithIndices([]int{0, 2, 4})
-	im := NewIndexManager(5, podIndexMap)
+	im := NewIndexManager(podIndexMap)
 
 	// Get index for existing pod - should return same index
 	existingPod := existingPods[1] // Pod with index 2
@@ -360,107 +336,120 @@ func TestGetIndex_ExistingPods(t *testing.T) {
 	assert.Equal(t, 2, index2)
 	assert.Equal(t, index, index2, "should return same index on repeated calls")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
 func TestGetIndex_NilPod(t *testing.T) {
-	im := NewIndexManager(3, map[string]int{})
+	im := NewIndexManager(map[string]int{})
 
 	index, err := im.GetIndex(nil)
 	assert.Error(t, err, "should return error for nil pod")
 	assert.Equal(t, -1, index, "should return -1 for nil pod")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
 func TestGetIndex_SequentialAssignment(t *testing.T) {
+	// Starting with indices [0, 3, 5] - continuous sequence is just [0]
 	_, podIndexMap := createTestPodsWithIndices([]int{0, 3, 5})
-	im := NewIndexManager(6, podIndexMap)
+	im := NewIndexManager(podIndexMap)
 
-	// Add new pods sequentially - should fill holes within replica size
-	expectedIndices := []int{1, 2, 4} // Only indices within replica size
+	// Add new pods sequentially - should extend continuous sequence from 0
+	// Starting with [0, 3, 5], next available should be 1 (extend continuous from 0)
 
-	for i, expectedIndex := range expectedIndices {
-		// Use unique UIDs to avoid conflicts
-		pod := createTestPod("new-pod-"+strconv.Itoa(i), "irrelevant", "new-uid-"+strconv.Itoa(i))
-		actualIndex, err := im.GetIndex(pod)
-		require.NoError(t, err)
-		assert.Equal(t, expectedIndex, actualIndex, "Pod %d should get index %d", i, expectedIndex)
-	}
+	// First new pod should extend continuous sequence to [0, 1]
+	pod1 := createDummyHostnameIndexTestPod("new-pod-0", "irrelevant")
+	index1, err := im.GetIndex(pod1)
+	require.NoError(t, err)
+	assert.Equal(t, 1, index1, "First pod should get index 1")
 
-	// Next pod should fail - all replica indices used
-	pod := createTestPod("overflow-pod", "irrelevant", "overflow-uid")
-	_, err := im.GetIndex(pod)
-	assert.Error(t, err, "should fail when all replica indices are used")
-	assert.Contains(t, err.Error(), "no available index within replica size")
+	// Second new pod should extend continuous sequence to [0, 1, 2]
+	pod2 := createDummyHostnameIndexTestPod("new-pod-1", "irrelevant")
+	index2, err := im.GetIndex(pod2)
+	require.NoError(t, err)
+	assert.Equal(t, 2, index2, "Second pod should get index 2")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	// Third new pod should extend continuous sequence but index 3 is taken,
+	// so it should get index 4 (first available after extending sequence)
+	pod3 := createDummyHostnameIndexTestPod("new-pod-2", "irrelevant")
+	index3, err := im.GetIndex(pod3)
+	require.NoError(t, err)
+	assert.Equal(t, 4, index3, "Third pod should get index 4 (first available after 3 is taken)")
+
+	// Next pod should get next available index
+	// After assignments [0, 1, 2, 3, 4, 5], next should be 6
+	pod := createDummyHostnameIndexTestPod("overflow-pod", "irrelevant")
+	actualIndex, err := im.GetIndex(pod)
+	require.NoError(t, err, "should succeed and assign next available index")
+	assert.Equal(t, 6, actualIndex, "should assign index 6 (next available after 5)")
+
+	// Final indices: [0, 1, 2, 3, 4, 5, 6]
+	// The continuous sequence is [0, 1, 2], so highestContinuous should be 2
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
-func TestGetIndex_NoAvailableIndex(t *testing.T) {
-	// Create manager with all indices used
+func TestGetIndex_ContinuousAssignment(t *testing.T) {
+	// Create manager with continuous indices [0,1,2] - next available should be 3
 	podIndexMap := map[string]int{
 		"pod-a": 0,
 		"pod-b": 1,
 		"pod-c": 2,
 	}
-	im := NewIndexManager(3, podIndexMap)
+	im := NewIndexManager(podIndexMap)
 
-	// Try to add new pod when all indices are used
-	newPod := createTestPod("new-pod", "irrelevant", "new-uid")
+	// Add new pod - should get next available index
+	newPod := createDummyHostnameIndexTestPod("new-pod", "irrelevant")
 	index, err := im.GetIndex(newPod)
-	assert.Error(t, err)
-	assert.Equal(t, -1, index)
-	assert.Contains(t, err.Error(), "no available index within replica size")
-	assert.Contains(t, err.Error(), "new-pod")
+	require.NoError(t, err)
+	assert.Equal(t, 3, index, "should assign next available index 3 (after continuous [0,1,2])")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
 // ==================== Integration Tests ====================
 
 func TestIndexManager_ComplexScenario(t *testing.T) {
-	// Start with pods at indices [0, 2] (only use 2 of 4 available indices)
+	// Complex scenario: algorithm prioritizes extending continuous sequence from 0
+	// Start with pods at indices [0, 2] - continuous sequence is [0], gap at 1
 	_, podIndexMap := createTestPodsWithIndices([]int{0, 2})
-	im := NewIndexManager(4, podIndexMap) // replica size = 4
+	im := NewIndexManager(podIndexMap)
 
-	// Available indices should be: 1, 3 (within replica)
-
-	// Add first new pod
-	pod1 := createTestPod("pod1", "irrelevant", "uid1")
+	// First new pod should extend continuous sequence from [0] to [0, 1]
+	pod1 := createDummyHostnameIndexTestPod("pod1", "irrelevant")
 	index1, err := im.GetIndex(pod1)
 	require.NoError(t, err)
 	assert.Equal(t, 1, index1, "first new pod should get index 1")
 
-	// Add second new pod
-	pod2 := createTestPod("pod2", "irrelevant", "uid2")
+	// Second new pod should continue extending but index 2 is taken, so gets next available
+	pod2 := createDummyHostnameIndexTestPod("pod2", "irrelevant")
 	index2, err2 := im.GetIndex(pod2)
 	require.NoError(t, err2)
-	assert.Equal(t, 3, index2, "second new pod should get index 3")
+	assert.Equal(t, 3, index2, "second new pod should get index 3 (2 is taken)")
 
-	// Add third new pod (all in-range indices now used) - should fail
-	pod3 := createTestPod("pod3", "irrelevant", "uid3")
+	// Third new pod should get next available index
+	pod3 := createDummyHostnameIndexTestPod("pod3", "irrelevant")
 	index3, err3 := im.GetIndex(pod3)
-	assert.Error(t, err3, "third new pod should fail - no available indices")
-	assert.Equal(t, -1, index3)
-	assert.Contains(t, err3.Error(), "no available index within replica size")
+	require.NoError(t, err3, "third new pod should succeed")
+	assert.Equal(t, 4, index3, "should assign next available index 4")
 
 	// Verify existing assignments are still consistent
 	check1, _ := im.GetIndex(pod1)
 	assert.Equal(t, 1, check1, "pod1 should still return index 1")
 	check2, _ := im.GetIndex(pod2)
 	assert.Equal(t, 3, check2, "pod2 should still return index 3")
+	check3, _ := im.GetIndex(pod3)
+	assert.Equal(t, 4, check3, "pod3 should still return index 4")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
-func TestIndexManager_ReplicaSizeBoundary(t *testing.T) {
-	// Create manager with replica size 2
-	im := NewIndexManager(2, map[string]int{})
+func TestIndexManager_ContinuousAssignment(t *testing.T) {
+	// Create manager with no initial assignments
+	im := NewIndexManager(map[string]int{})
 
-	// Add pods up to replica size
-	pod0 := createTestPod("pod0", "irrelevant", "uid0")
-	pod1 := createTestPod("pod1", "irrelevant", "uid1")
+	// Add pods sequentially
+	pod0 := createDummyHostnameIndexTestPod("pod0", "irrelevant")
+	pod1 := createDummyHostnameIndexTestPod("pod1", "irrelevant")
 
 	idx0, err0 := im.GetIndex(pod0)
 	require.NoError(t, err0)
@@ -469,48 +458,47 @@ func TestIndexManager_ReplicaSizeBoundary(t *testing.T) {
 	require.NoError(t, err1)
 	assert.Equal(t, 1, idx1)
 
-	// Next pod should fail - no more indices available
-	pod2 := createTestPod("pod2", "irrelevant", "uid2")
+	// Next pod should continue the sequence
+	pod2 := createDummyHostnameIndexTestPod("pod2", "irrelevant")
 	idx2, err2 := im.GetIndex(pod2)
-	assert.Error(t, err2, "should fail when replica size exceeded")
-	assert.Equal(t, -1, idx2)
-	assert.Contains(t, err2.Error(), "no available index within replica size")
+	require.NoError(t, err2)
+	assert.Equal(t, 2, idx2, "should assign next sequential index")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
-func TestGetIndex_ZeroReplicaSize(t *testing.T) {
-	im := NewIndexManager(0, map[string]int{})
+func TestGetIndex_EmptyManager(t *testing.T) {
+	im := NewIndexManager(map[string]int{})
 
-	pod := createTestPod("test-pod", "irrelevant", "test-uid")
+	pod := createDummyHostnameIndexTestPod("test-pod", "irrelevant")
 	index, err := im.GetIndex(pod)
-	assert.Error(t, err, "should fail with zero replica size - no available indices")
-	assert.Equal(t, -1, index)
-	assert.Contains(t, err.Error(), "no available index within replica size")
+	require.NoError(t, err, "should succeed and assign first index")
+	assert.Equal(t, 0, index, "should assign index 0")
 
-	assertBidirectionalConsistency(t, im.biMap)
+	assertIndexTrackerConsistency(t, im.tracker)
 }
 
-func TestBidirectionalMap_LargeIndices(t *testing.T) {
-	biMap := newBidirectionalMap(2)
+func TestIndexTracker_LargeIndices(t *testing.T) {
 	name := "test-pod"
 
-	// Assign a very large index
-	biMap.assignIndex(name, 1000)
-	index, exists := biMap.getPodIndex(name)
+	// Create tracker with a very large index
+	indexedPods := map[string]int{name: 1000}
+	tracker := newIndexTracker(indexedPods)
+	index, exists := tracker.GetPodIndex(name)
 	assert.True(t, exists)
 	assert.Equal(t, 1000, index)
-	assert.True(t, biMap.isIndexUsed(1000))
 
-	assertBidirectionalConsistency(t, biMap)
+	// Next available should be 0 since no continuous sequence from 0
+	assert.Equal(t, 0, tracker.AssignAvailableIndex("large-test-pod"))
+
+	assertIndexTrackerConsistency(t, tracker)
 }
 
 // createTestPodWithHostname creates a test pod with the specified name, uid, and hostname
-func createTestPodWithHostname(name, uid, hostname string) *corev1.Pod {
+func createTestPodWithHostname(name, hostname string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name,
-			UID:  types.UID(uid),
 		},
 		Spec: corev1.PodSpec{
 			Hostname: hostname,
@@ -524,7 +512,7 @@ func createTestLogger() logr.Logger {
 }
 
 // assertIndexManagerMappings verifies the IndexManager has the expected pod name to index mappings
-func assertIndexManagerMappings(t *testing.T, im *IndexManager, expectedMappings map[string]int, expectedReplicaSize int) {
+func assertIndexManagerMappings(t *testing.T, im *IndexManager, expectedMappings map[string]int) {
 	// We can't directly access IndexManager internals, so we test via GetIndex behavior
 	// Create test pods with the expected names and verify they return the expected indices
 	for name, expectedIndex := range expectedMappings {
@@ -546,13 +534,13 @@ func TestInitIndexManager_ValidPods(t *testing.T) {
 
 	// Create test pods with valid hostnames
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-a", "uid-a", "test-clique-0"),
-		createTestPodWithHostname("pod-b", "uid-b", "test-clique-2"),
-		createTestPodWithHostname("pod-c", "uid-c", "test-clique-4"),
+		createTestPodWithHostname("pod-a", "test-clique-0"),
+		createTestPodWithHostname("pod-b", "test-clique-2"),
+		createTestPodWithHostname("pod-c", "test-clique-4"),
 	}
 
 	// Initialize IndexManager with expected size 5
-	im := InitIndexManger(pods, 5, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Verify mappings
 	expectedMappings := map[string]int{
@@ -560,17 +548,17 @@ func TestInitIndexManager_ValidPods(t *testing.T) {
 		"pod-b": 2,
 		"pod-c": 4,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 5)
+	assertIndexManagerMappings(t, im, expectedMappings)
 }
 
 func TestInitIndexManager_EmptyPods(t *testing.T) {
 	logger := createTestLogger()
 
 	// Initialize IndexManager with empty pod list
-	im := InitIndexManger([]*corev1.Pod{}, 3, logger)
+	im := InitIndexManger([]*corev1.Pod{}, logger)
 
 	// Verify no mappings exist (try to get index for new pod should get next available)
-	newPod := createTestPodWithHostname("new-pod", "new-uid", "irrelevant")
+	newPod := createTestPodWithHostname("new-pod", "irrelevant")
 	index, err := im.GetIndex(newPod)
 	require.NoError(t, err)
 	assert.Equal(t, 0, index, "should get first available index in empty manager")
@@ -581,13 +569,13 @@ func TestInitIndexManager_SparseIndices(t *testing.T) {
 
 	// Create test pods with non-consecutive indices
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-a", "uid-a", "test-clique-0"),
-		createTestPodWithHostname("pod-b", "uid-b", "test-clique-2"),
-		createTestPodWithHostname("pod-c", "uid-c", "test-clique-4"),
+		createTestPodWithHostname("pod-a", "test-clique-0"),
+		createTestPodWithHostname("pod-b", "test-clique-2"),
+		createTestPodWithHostname("pod-c", "test-clique-4"),
 	}
 
 	// Initialize IndexManager with expected size 6
-	im := InitIndexManger(pods, 6, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Verify mappings
 	expectedMappings := map[string]int{
@@ -595,10 +583,10 @@ func TestInitIndexManager_SparseIndices(t *testing.T) {
 		"pod-b": 2,
 		"pod-c": 4,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 6)
+	assertIndexManagerMappings(t, im, expectedMappings)
 
 	// Verify that holes can be filled (index 1 should be available)
-	newPod := createTestPodWithHostname("new-pod", "new-uid", "irrelevant")
+	newPod := createTestPodWithHostname("new-pod", "irrelevant")
 	index, err := im.GetIndex(newPod)
 	require.NoError(t, err)
 	assert.Equal(t, 1, index, "should fill hole at index 1")
@@ -606,23 +594,30 @@ func TestInitIndexManager_SparseIndices(t *testing.T) {
 
 // ==================== Parameter Edge Case Tests ====================
 
-func TestInitIndexManager_ZeroExpectedSize(t *testing.T) {
+func TestInitIndexManager_ValidPods_NoLimits(t *testing.T) {
 	logger := createTestLogger()
 
 	// Create test pods with valid hostnames
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-a", "uid-a", "test-clique-0"),
-		createTestPodWithHostname("pod-b", "uid-b", "test-clique-1"),
+		createTestPodWithHostname("pod-a", "test-clique-0"),
+		createTestPodWithHostname("pod-b", "test-clique-1"),
 	}
 
-	// Initialize IndexManager with expected size 0
-	im := InitIndexManger(pods, 0, logger)
+	// Initialize IndexManager
+	im := InitIndexManger(pods, logger)
 
-	// All pods should be considered out-of-bounds, so no mappings
-	// Try to get index for existing pod - should get new index since it wasn't mapped
-	newPod := createTestPodWithHostname("new-pod", "new-uid", "irrelevant")
-	_, err := im.GetIndex(newPod)
-	assert.Error(t, err, "should fail with zero replica size")
+	// All valid pods should be mapped
+	expectedMappings := map[string]int{
+		"pod-a": 0,
+		"pod-b": 1,
+	}
+	assertIndexManagerMappings(t, im, expectedMappings)
+
+	// Try to get index for new pod - should succeed
+	newPod := createTestPodWithHostname("new-pod", "irrelevant")
+	index, err := im.GetIndex(newPod)
+	require.NoError(t, err, "should succeed")
+	assert.Equal(t, 2, index, "should assign next available index")
 }
 
 func TestInitIndexManager_LargeExpectedSize(t *testing.T) {
@@ -630,19 +625,19 @@ func TestInitIndexManager_LargeExpectedSize(t *testing.T) {
 
 	// Create test pods with valid hostnames
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-a", "uid-a", "test-clique-0"),
-		createTestPodWithHostname("pod-b", "uid-b", "test-clique-1"),
+		createTestPodWithHostname("pod-a", "test-clique-0"),
+		createTestPodWithHostname("pod-b", "test-clique-1"),
 	}
 
 	// Initialize IndexManager with large expected size
-	im := InitIndexManger(pods, 1000, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Verify mappings work correctly
 	expectedMappings := map[string]int{
 		"pod-a": 0,
 		"pod-b": 1,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 1000)
+	assertIndexManagerMappings(t, im, expectedMappings)
 }
 
 // ==================== Input Validation Tests ====================
@@ -652,21 +647,21 @@ func TestInitIndexManager_InvalidHostnames(t *testing.T) {
 
 	// Create test pods with mix of valid and invalid hostnames
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-valid", "uid-valid", "test-clique-0"),
-		createTestPodWithHostname("pod-invalid1", "uid-invalid1", "invalid-hostname"),
-		createTestPodWithHostname("pod-invalid2", "uid-invalid2", "pod-abc"),
-		createTestPodWithHostname("pod-valid2", "uid-valid2", "test-clique-2"),
+		createTestPodWithHostname("pod-valid", "test-clique-0"),
+		createTestPodWithHostname("pod-invalid1", "invalid-hostname"),
+		createTestPodWithHostname("pod-invalid2", "pod-abc"),
+		createTestPodWithHostname("pod-valid2", "test-clique-2"),
 	}
 
 	// Initialize IndexManager
-	im := InitIndexManger(pods, 5, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Only valid pods should be mapped
 	expectedMappings := map[string]int{
 		"pod-valid":  0,
 		"pod-valid2": 2,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 5)
+	assertIndexManagerMappings(t, im, expectedMappings)
 }
 
 func TestInitIndexManager_EmptyHostnames(t *testing.T) {
@@ -674,40 +669,40 @@ func TestInitIndexManager_EmptyHostnames(t *testing.T) {
 
 	// Create test pods with empty hostnames
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-empty1", "uid-empty1", ""),
-		createTestPodWithHostname("pod-valid", "uid-valid", "test-clique-1"),
-		createTestPodWithHostname("pod-empty2", "uid-empty2", ""),
+		createTestPodWithHostname("pod-empty1", ""),
+		createTestPodWithHostname("pod-valid", "test-clique-1"),
+		createTestPodWithHostname("pod-empty2", ""),
 	}
 
 	// Initialize IndexManager
-	im := InitIndexManger(pods, 3, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Only pod with valid hostname should be mapped
 	expectedMappings := map[string]int{
 		"pod-valid": 1,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 3)
+	assertIndexManagerMappings(t, im, expectedMappings)
 }
 
-func TestInitIndexManager_OutOfBoundsIndices(t *testing.T) {
+func TestInitIndexManager_MixedValidInvalidIndices(t *testing.T) {
 	logger := createTestLogger()
 
-	// Create the valid pods that should be mapped during initialization
-	validPod1 := createTestPodWithHostname("pod-valid", "uid-valid", "test-clique-1")
-	validPod2 := createTestPodWithHostname("pod-valid2", "uid-valid2", "test-clique-2")
+	// Create test pods with mix of valid and invalid hostnames
+	validPod1 := createTestPodWithHostname("pod-valid", "test-clique-1")
+	validPod2 := createTestPodWithHostname("pod-valid2", "test-clique-2")
+	validPod3 := createTestPodWithHostname("pod-high-index", "test-clique-10") // High index should work now
 
-	// Create test pods with out-of-bounds indices
 	pods := []*corev1.Pod{
 		validPod1,
-		createTestPodWithHostname("pod-negative", "uid-negative", "test-clique-negative"), // This will fail hostname parsing
-		createTestPodWithHostname("pod-too-high", "uid-too-high", "test-clique-5"),
+		createTestPodWithHostname("pod-invalid", "test-clique-negative"), // This will fail hostname parsing
+		validPod3,
 		validPod2,
 	}
 
-	// Initialize IndexManager with expected size 3 (indices 0,1,2 are valid)
-	im := InitIndexManger(pods, 3, logger)
+	// Initialize IndexManager
+	im := InitIndexManger(pods, logger)
 
-	// Only in-bounds pods should be mapped - test them using the original pod objects
+	// All valid pods should be mapped, regardless of index value
 	index1, err1 := im.GetIndex(validPod1)
 	require.NoError(t, err1)
 	assert.Equal(t, 1, index1, "pod-valid should have index 1")
@@ -716,8 +711,12 @@ func TestInitIndexManager_OutOfBoundsIndices(t *testing.T) {
 	require.NoError(t, err2)
 	assert.Equal(t, 2, index2, "pod-valid2 should have index 2")
 
+	index3, err3 := im.GetIndex(validPod3)
+	require.NoError(t, err3)
+	assert.Equal(t, 10, index3, "pod-high-index should have index 10")
+
 	// Verify that a new pod gets the next available index (0)
-	newPod := createTestPodWithHostname("new-pod", "uid-new", "irrelevant")
+	newPod := createTestPodWithHostname("new-pod", "irrelevant")
 	newIndex, err := im.GetIndex(newPod)
 	require.NoError(t, err)
 	assert.Equal(t, 0, newIndex, "new pod should get next available index (0)")
@@ -726,35 +725,38 @@ func TestInitIndexManager_OutOfBoundsIndices(t *testing.T) {
 // ==================== Edge Case Tests ====================
 
 func TestInitIndexManager_DuplicateIndices(t *testing.T) {
+	// During initialization with duplicate indices, the behavior is:
+	// 1. Each pod gets processed and assigns its index
+	// 2. Later pods with same index remove the previous pod's mapping ("last wins")
+	// 3. When GetIndex is called later, removed pods get new indices
 	logger := createTestLogger()
 
 	// Create test pods with duplicate indices
-	pod1 := createTestPodWithHostname("pod-first", "uid-first", "test-clique-1")
-	pod2 := createTestPodWithHostname("pod-second", "uid-second", "test-clique-1") // Same index
-	pod3 := createTestPodWithHostname("pod-third", "uid-third", "test-clique-2")
+	pod1 := createTestPodWithHostname("pod-first", "test-clique-1")
+	pod2 := createTestPodWithHostname("pod-second", "test-clique-1") // Same index
+	pod3 := createTestPodWithHostname("pod-third", "test-clique-2")
 
 	pods := []*corev1.Pod{pod1, pod2, pod3}
 
 	// Initialize IndexManager
-	im := InitIndexManger(pods, 5, logger)
+	im := InitIndexManger(pods, logger)
 
-	// The IndexManager's assignIndex method handles duplicates by "last wins"
-	// So uid-second should have index 1, uid-first should be overwritten
-
-	// Test the pod that should have won the conflict
 	index2, err2 := im.GetIndex(pod2)
 	require.NoError(t, err2)
-	assert.Equal(t, 1, index2, "second pod should have index 1 (last wins)")
+	assert.Equal(t, 0, index2, "second pod should have index 0")
 
 	// Test the pod that should not have been overwritten
 	index3, err3 := im.GetIndex(pod3)
 	require.NoError(t, err3)
 	assert.Equal(t, 2, index3, "third pod should have index 2")
 
-	// Verify that the first pod was overwritten and gets a new index
+	// Verify that the first pod gets the next available index
+	// After "last wins" processing: pod2 has index 1, pod3 has index 2, pod1 was removed
+	// When pod1 calls GetIndex(), it gets the next available index
+	// Since there's no continuous sequence from 0, it gets index 0
 	index1, err1 := im.GetIndex(pod1)
 	require.NoError(t, err1)
-	assert.Equal(t, 0, index1, "first pod should get new index since it was overwritten")
+	assert.Equal(t, 1, index1, "first pod should get index 1")
 }
 
 func TestInitIndexManager_NilPods(t *testing.T) {
@@ -762,21 +764,21 @@ func TestInitIndexManager_NilPods(t *testing.T) {
 
 	// Create pod slice with nil pods
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-valid1", "uid-valid1", "test-clique-0"),
+		createTestPodWithHostname("pod-valid1", "test-clique-0"),
 		nil, // Nil pod
-		createTestPodWithHostname("pod-valid2", "uid-valid2", "test-clique-2"),
+		createTestPodWithHostname("pod-valid2", "test-clique-2"),
 		nil, // Another nil pod
 	}
 
 	// Initialize IndexManager (should handle nil pods gracefully)
-	im := InitIndexManger(pods, 5, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Only valid pods should be mapped
 	expectedMappings := map[string]int{
 		"pod-valid1": 0,
 		"pod-valid2": 2,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 5)
+	assertIndexManagerMappings(t, im, expectedMappings)
 }
 
 func TestInitIndexManager_MixedScenario(t *testing.T) {
@@ -784,17 +786,17 @@ func TestInitIndexManager_MixedScenario(t *testing.T) {
 
 	// Create a realistic mixed scenario
 	pods := []*corev1.Pod{
-		createTestPodWithHostname("pod-valid1", "uid-valid1", "test-clique-0"),
-		createTestPodWithHostname("pod-empty", "uid-empty", ""),              // Empty hostname
-		createTestPodWithHostname("pod-invalid", "uid-invalid", "malformed"), // Invalid hostname
-		createTestPodWithHostname("pod-valid2", "uid-valid2", "test-clique-1"),
-		createTestPodWithHostname("pod-oob", "uid-oob", "test-clique-10"), // Out of bounds
+		createTestPodWithHostname("pod-valid1", "test-clique-0"),
+		createTestPodWithHostname("pod-empty", ""),            // Empty hostname
+		createTestPodWithHostname("pod-invalid", "malformed"), // Invalid hostname
+		createTestPodWithHostname("pod-valid2", "test-clique-1"),
+		createTestPodWithHostname("pod-oob", "test-clique-10"), // Out of bounds
 		nil, // Nil pod
-		createTestPodWithHostname("pod-valid3", "uid-valid3", "test-clique-2"),
+		createTestPodWithHostname("pod-valid3", "test-clique-2"),
 	}
 
 	// Initialize IndexManager with expected size 5
-	im := InitIndexManger(pods, 5, logger)
+	im := InitIndexManger(pods, logger)
 
 	// Only valid, in-bounds pods should be mapped
 	expectedMappings := map[string]int{
@@ -802,10 +804,10 @@ func TestInitIndexManager_MixedScenario(t *testing.T) {
 		"pod-valid2": 1,
 		"pod-valid3": 2,
 	}
-	assertIndexManagerMappings(t, im, expectedMappings, 5)
+	assertIndexManagerMappings(t, im, expectedMappings)
 
 	// Verify next available index is 3
-	newPod := createTestPodWithHostname("new-pod", "new-uid", "irrelevant")
+	newPod := createTestPodWithHostname("new-pod", "irrelevant")
 	index, err := im.GetIndex(newPod)
 	require.NoError(t, err)
 	assert.Equal(t, 3, index, "next available index should be 3")
