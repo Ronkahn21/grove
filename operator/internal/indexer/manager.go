@@ -6,48 +6,34 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 )
 
-// IndexManager manages pod indices for standalone PodCliques.
+// IndexManager manages pod indices for PodCliques.
 // Handles holes, out-of-range indices, duplicates, and missing hostnames gracefully.
 // Prioritizes filling lower indices first.
 type IndexManager struct {
 	biMap *bidirectionalMap
 }
 
-// InitializationError represents an error that occurred during IndexManager initialization
-type InitializationError struct {
-	PodName string
-	Reason  string
-	Err     error
-}
-
-func (e InitializationError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("pod %s: %s: %v", e.PodName, e.Reason, e.Err)
-	}
-	return fmt.Sprintf("pod %s: %s", e.PodName, e.Reason)
-}
-
 type bidirectionalMap struct {
-	podToIndex  map[types.UID]int
-	indexToPod  map[int]types.UID
+	podToIndex  map[string]int
+	indexToPod  map[int]string
 	replicaSize int
 }
 
 func newBidirectionalMap(replicaSize int) *bidirectionalMap {
 	return &bidirectionalMap{
-		podToIndex:  make(map[types.UID]int),
-		indexToPod:  make(map[int]types.UID),
+		podToIndex:  make(map[string]int),
+		indexToPod:  make(map[int]string),
 		replicaSize: replicaSize,
 	}
 }
 
-func (b *bidirectionalMap) assignIndex(podUID types.UID, index int) {
+func (b *bidirectionalMap) assignIndex(podName string, index int) {
 	// Remove any existing assignment for this pod
-	if existingIndex, exists := b.podToIndex[podUID]; exists {
+	if existingIndex, exists := b.podToIndex[podName]; exists {
 		delete(b.indexToPod, existingIndex)
 	}
 
@@ -57,12 +43,12 @@ func (b *bidirectionalMap) assignIndex(podUID types.UID, index int) {
 	}
 
 	// Make new assignment
-	b.podToIndex[podUID] = index
-	b.indexToPod[index] = podUID
+	b.podToIndex[podName] = index
+	b.indexToPod[index] = podName
 }
 
-func (b *bidirectionalMap) getPodIndex(podUID types.UID) (int, bool) {
-	index, exists := b.podToIndex[podUID]
+func (b *bidirectionalMap) getPodIndex(podName string) (int, bool) {
+	index, exists := b.podToIndex[podName]
 	return index, exists
 }
 
@@ -71,56 +57,28 @@ func (b *bidirectionalMap) isIndexUsed(index int) bool {
 	return exists
 }
 
-func (b *bidirectionalMap) getAvailableIndex() int {
+func (b *bidirectionalMap) getAvailableIndex() (int, error) {
 	// Find lowest available index within replica size
 	for i := 0; i < b.replicaSize; i++ {
 		if !b.isIndexUsed(i) {
-			return i
+			return i, nil
 		}
 	}
 
-	// All indices within replica size are used, find next available
-	nextIndex := b.replicaSize
-	for b.isIndexUsed(nextIndex) {
-		nextIndex++
-	}
-	return nextIndex
+	// All indices within replica size are used - this is an error
+	return -1, errors.New("no available index within replica size")
 }
 
-func NewIndexManager(replicaSize int, existingPods []*corev1.Pod) (*IndexManager, []InitializationError) {
+func NewIndexManager(replicaSize int, podIndexMappings map[string]int) *IndexManager {
 	im := &IndexManager{
 		biMap: newBidirectionalMap(replicaSize),
 	}
 
-	var errors []InitializationError
-
-	for _, pod := range existingPods {
-		if pod == nil {
-			continue
-		}
-
-		index, err := extractIndexFromHostname(pod.Spec.Hostname)
-		if err != nil {
-			errors = append(errors, InitializationError{
-				PodName: pod.Name,
-				Reason:  "invalid hostname",
-				Err:     err,
-			})
-			continue
-		}
-
-		if im.biMap.isIndexUsed(index) {
-			errors = append(errors, InitializationError{
-				PodName: pod.Name,
-				Reason:  fmt.Sprintf("duplicate index %d", index),
-			})
-			continue
-		}
-
-		im.biMap.assignIndex(pod.UID, index)
+	for podName, index := range podIndexMappings {
+		im.biMap.assignIndex(podName, index)
 	}
 
-	return im, errors
+	return im
 }
 
 func (im *IndexManager) GetIndex(pod *corev1.Pod) (int, error) {
@@ -129,18 +87,21 @@ func (im *IndexManager) GetIndex(pod *corev1.Pod) (int, error) {
 	}
 
 	// Return existing index if pod is already known
-	if existingIndex, exists := im.biMap.getPodIndex(pod.UID); exists {
+	if existingIndex, exists := im.biMap.getPodIndex(pod.Name); exists {
 		return existingIndex, nil
 	}
 
 	// Assign new index
-	newIndex := im.biMap.getAvailableIndex()
-	im.biMap.assignIndex(pod.UID, newIndex)
+	newIndex, err := im.biMap.getAvailableIndex()
+	if err != nil {
+		return -1, fmt.Errorf("failed to assign index to pod %s: %w", pod.Name, err)
+	}
+	im.biMap.assignIndex(pod.Name, newIndex)
 
 	return newIndex, nil
 }
 
-func extractIndexFromHostname(hostname string) (int, error) {
+func ExtractIndexFromHostname(hostname string) (int, error) {
 	if hostname == "" {
 		return -1, errors.New("hostname is empty")
 	}
@@ -157,4 +118,38 @@ func extractIndexFromHostname(hostname string) (int, error) {
 	}
 
 	return index, nil
+}
+
+func InitIndexManger(existingPods []*corev1.Pod, expectedPodsSize int, logger logr.Logger) *IndexManager {
+	im := &IndexManager{
+		biMap: newBidirectionalMap(expectedPodsSize),
+	}
+
+	// Process pods in order to maintain "last wins" behavior for duplicate indices
+	for _, pod := range existingPods {
+		if pod == nil {
+			continue
+		}
+		if pod.Spec.Hostname == "" {
+			continue
+		}
+		index, err := ExtractIndexFromHostname(pod.Spec.Hostname)
+		// for now, we ignore the error and continue processing other pods
+		// in the future we might want to handle this differently
+		// e.g. by marking deleted pods and creating new pods
+		// with valid indexes
+		if err != nil {
+			logger.Error(err, "Failed to extract index from pod hostname",
+				"podName", pod.Name, "podHostname", pod.Spec.Hostname)
+			continue
+		}
+		if index < 0 || index >= expectedPodsSize {
+			logger.Error(nil, "Extracted index is out of bounds for PodClique replicas",
+				"podName", pod.Name, "podHostname", pod.Spec.Hostname,
+				"index", index, "replicas", expectedPodsSize)
+			continue
+		}
+		im.biMap.assignIndex(pod.Name, index)
+	}
+	return im
 }
