@@ -152,9 +152,9 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 		)
 	}
 	pod.ObjectMeta = metav1.ObjectMeta{
-		GenerateName: fmt.Sprintf("%s-", pclq.Name),
-		Namespace:    pclq.Namespace,
-		Labels:       labels,
+		Name:      grovecorev1alpha1.GeneratePodName(pclq.Name),
+		Namespace: pclq.Namespace,
+		Labels:    labels,
 	}
 	if err = controllerutil.SetControllerReference(pclq, pod, r.scheme); err != nil {
 		return groveerr.WrapError(err,
@@ -167,6 +167,18 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 
 	addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex)
 	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
+	podIndex, err := indexMg.GetIndex(pod)
+	if err != nil {
+		// should never happen we dont allow to manually set pods index
+		return groveerr.WrapError(err,
+			errCodeSyncPod,
+			component.OperationSync,
+			fmt.Sprintf("error getting index for Pod %v", client.ObjectKeyFromObject(pod)),
+		)
+	}
+
+	// Configure hostname and subdomain for service discovery
+	configurePodHostname(pod, pclq.Name, podIndex, pgsName, pgsReplicaIndex)
 
 	return nil
 }
@@ -258,4 +270,14 @@ func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaInd
 	for i := range pod.Spec.Containers {
 		pod.Spec.Containers[i].Env = utils.MergeEnvVars(pod.Spec.Containers[i].Env, groveEnvVars)
 	}
+}
+
+// configurePodHostname sets the pod hostname and subdomain for service discovery
+func configurePodHostname(pod *corev1.Pod, pclqName string, podIndex int, pgsName string, pgsReplicaIndex int) {
+	// Set hostname for service discovery (e.g., "my-pclq-0")
+	pod.Spec.Hostname = fmt.Sprintf("%s-%d", pclqName, podIndex)
+
+	// Set subdomain to headless service name (reusing existing logic)
+	pod.Spec.Subdomain = grovecorev1alpha1.GenerateHeadlessServiceName(
+		grovecorev1alpha1.ResourceNameReplica{Name: pgsName, Replica: pgsReplicaIndex})
 }

@@ -10,13 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// IndexManager manages pod indices for PodCliques.
-// Handles holes, out-of-range indices, duplicates, and missing hostnames gracefully.
-// Prioritizes filling lower indices first.
-type IndexManager struct {
-	biMap *bidirectionalMap
-}
-
 type bidirectionalMap struct {
 	podToIndex  map[string]int
 	indexToPod  map[int]string
@@ -67,6 +60,12 @@ func (b *bidirectionalMap) getAvailableIndex() (int, error) {
 
 	// All indices within replica size are used - this is an error
 	return -1, errors.New("no available index within replica size")
+}
+
+// IndexManager manages pod indices for PodCliques.
+// Prioritizes filling lower indices first.
+type IndexManager struct {
+	biMap *bidirectionalMap
 }
 
 func NewIndexManager(replicaSize int, podIndexMappings map[string]int) *IndexManager {
