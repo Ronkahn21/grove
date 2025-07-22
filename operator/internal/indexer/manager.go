@@ -14,7 +14,6 @@ import (
 
 // IndexManagerStats contains statistics about the index manager state.
 type IndexManagerStats struct {
-	TotalPods        int // Total number of pods being tracked
 	HighestIndex     int // Highest continuous index starting from 0
 	MaxIndexAssigned int // Maximum index that has been assigned
 	UsedIndices      int // Total number of indices in use
