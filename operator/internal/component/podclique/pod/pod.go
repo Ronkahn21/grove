@@ -159,9 +159,8 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 	}
 	pod.Spec = *pclq.Spec.PodSpec.DeepCopy()
 
-	podIndex, err := indexMg.GetIndex(pod)
-	addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex, podIndex)
 	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
+	podIndex, err := indexMg.GetIndex(pod)
 	if err != nil {
 		// should never happen we dont allow to manually set pods index
 		return groveerr.WrapError(err,
@@ -170,6 +169,7 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 			fmt.Sprintf("error getting index for Pod %v", client.ObjectKeyFromObject(pod)),
 		)
 	}
+	addGroveEnvironmentVariables(pod, pgsName, pgsReplicaIndex, podIndex)
 
 	// Configure hostname and subdomain for service discovery
 	configurePodHostname(pod, pclq.Name, podIndex, pgsName, pgsReplicaIndex)
