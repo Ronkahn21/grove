@@ -144,14 +144,7 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 		)
 	}
 
-	labels, err := getLabels(pclq.ObjectMeta, podGangName, pgsReplicaIndex)
-	if err != nil {
-		return groveerr.WrapError(err,
-			errCodeSyncPod,
-			component.OperationSync,
-			fmt.Sprintf("error building Pod resource for PodClique %v", client.ObjectKeyFromObject(pclq)),
-		)
-	}
+	labels := getLabels(pclq.ObjectMeta, podGangName, pgsReplicaIndex)
 	pod.ObjectMeta = metav1.ObjectMeta{
 		Name:      grovecorev1alpha1.GeneratePodName(pclq.Name),
 		Namespace: pclq.Namespace,
@@ -210,7 +203,7 @@ func getSelectorLabelsForPods(pclqObjectMeta metav1.ObjectMeta) map[string]strin
 	)
 }
 
-func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaIndex int) (map[string]string, error) {
+func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaIndex int) map[string]string {
 	pgsName := k8sutils.GetFirstOwnerName(pclqObjectMeta)
 
 	labels := map[string]string{
@@ -221,7 +214,7 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaI
 	return lo.Assign(
 		k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsName),
 		pclqObjectMeta.Labels,
-		labels), nil
+		labels)
 }
 
 // addGroveEnvironmentVariables adds Grove-specific environment variables

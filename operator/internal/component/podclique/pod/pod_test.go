@@ -122,7 +122,6 @@ func assertNoDuplicateEnvVars(t *testing.T, container corev1.Container) {
 }
 
 func TestAddGroveEnvironmentVariables(t *testing.T) {
-
 	tests := []struct {
 		name              string
 		pclq              *grovecorev1alpha1.PodClique
@@ -217,7 +216,6 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 }
 
 func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
-
 	tests := []struct {
 		name            string
 		pclq            *grovecorev1alpha1.PodClique

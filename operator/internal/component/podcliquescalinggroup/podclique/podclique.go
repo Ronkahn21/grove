@@ -367,7 +367,6 @@ func (r _resource) addGrovePCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodC
 	for i := range pclq.Spec.PodSpec.Containers {
 		podTemplate.Containers[i].Env = utils.MergeEnvVars(podTemplate.Containers[i].Env, pcsgEnvVars)
 	}
-
 }
 
 func identifyFullyQualifiedStartupDependencyNames(pgs *grovecorev1alpha1.PodGangSet, pclq *grovecorev1alpha1.PodClique, pgsReplicaIndex, foundAtIndex int) ([]string, error) {
