@@ -42,7 +42,7 @@ const (
 	errCodeGetPod                    grovecorev1alpha1.ErrorCode = "ERR_GET_POD"
 	errCodeSyncPod                   grovecorev1alpha1.ErrorCode = "ERR_SYNC_POD"
 	errCodeDeletePod                 grovecorev1alpha1.ErrorCode = "ERR_DELETE_POD"
-	errCodeGetPodGangSet             grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANGSET"
+
 	errCodeGetPodGang                grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANG"
 	errCodeListPod                   grovecorev1alpha1.ErrorCode = "ERR_LIST_POD"
 	errCodeRemovePodSchedulingGate   grovecorev1alpha1.ErrorCode = "ERR_REMOVE_POD_SCHEDULING_GATE"
@@ -198,7 +198,7 @@ func getSelectorLabelsForPods(pclqObjectMeta metav1.ObjectMeta) map[string]strin
 	return lo.Assign(
 		k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsName),
 		map[string]string{
-			grovecorev1alpha1.LabelPodCliqueName: pclqObjectMeta.Name,
+			grovecorev1alpha1.LabelPodClique: pclqObjectMeta.Name,
 		},
 	)
 }

@@ -28,6 +28,10 @@ const (
 	LabelManagedByValue = "grove-operator"
 	// LabelComponentKey is a key for a label that sets the component type on resources provisioned for a PodGangSet.
 	LabelComponentKey = "app.kubernetes.io/component"
+	// LabelPodClique is a key for a label that sets the PodClique name.
+	LabelPodClique = "grove.io/podclique"
+	// LabelPodGang is a key for a label that sets the PodGang name.
+	LabelPodGang = "grove.io/podgang"
 	// LabelPodGangSetReplicaIndex is a key for a label that sets the replica index of a PodGangSet.
 	LabelPodGangSetReplicaIndex = "grove.io/podgangset-replica-index"
 	// LabelPodCliqueName is a key for a label that sets the PodClique name.
@@ -70,4 +74,10 @@ const (
 	EventDeleted = "Deleted"
 	// EventDeleteError is the event type which indicates that the delete operation has failed.
 	EventDeleteError = "DeleteError"
+)
+
+// Constants for Condition Types
+const (
+	// ConditionTypeMinAvailableBreached indicates that the minimum number of ready pods in the PodClique are below the threshold defined in the PodCliqueSpec.MinAvailable threshold.
+	ConditionTypeMinAvailableBreached = "MinAvailableBreached"
 )
