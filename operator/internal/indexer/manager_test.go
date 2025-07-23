@@ -54,7 +54,7 @@ func createTestPodsWithIndices(indices []int) ([]*corev1.Pod, map[string]int) {
 // ==================== indexTracker Tests ====================
 
 func TestNewIndexManager_Empty(t *testing.T) {
-	manager := NewIndexManager(nil, 5)
+	manager := NewPodIndexTracker(nil, 5)
 
 	assert.NotNil(t, manager)
 	assert.NotNil(t, manager.podIndexMap)
@@ -70,35 +70,10 @@ func TestIndexManager_LoadExistingPodIndex(t *testing.T) {
 		name1: 0,
 		name2: 1,
 	}
-	manager := NewIndexManager(indexedPods, 5)
-
-	// Verify pods are assigned correctly
-	index, exists := manager.GetPodIndex(name1)
-	assert.True(t, exists)
-	assert.Equal(t, 0, index)
-
-	index, exists = manager.GetPodIndex(name2)
-	assert.True(t, exists)
-	assert.Equal(t, 1, index)
+	manager := NewPodIndexTracker(indexedPods, 5)
 
 	// Next available should be 2
 	assert.Equal(t, 2, manager.assignAvailableIndex("test-pod"), "Next available should be 2")
-}
-
-func TestIndexManager_GetPodIndex(t *testing.T) {
-	name := "test-pod"
-
-	// Non-existent pod
-	manager := NewIndexManager(nil, 5)
-	_, exists := manager.GetPodIndex(name)
-	assert.False(t, exists)
-
-	// Existing pod
-	indexedPods := map[string]int{name: 1}
-	manager = NewIndexManager(indexedPods, 5)
-	index, exists := manager.GetPodIndex(name)
-	assert.True(t, exists)
-	assert.Equal(t, 1, index)
 }
 
 func TestIndexManager_HoleFilling(t *testing.T) {
@@ -148,7 +123,7 @@ func TestIndexManager_HoleFilling(t *testing.T) {
 				name := "pod-" + string(rune('a'+i))
 				indexedPods[name] = index
 			}
-			manager := NewIndexManager(indexedPods, 10)
+			manager := NewPodIndexTracker(indexedPods, 10)
 
 			actualIndex := manager.assignAvailableIndex("test-pod")
 			assert.Equal(t, tt.expectedIndex, actualIndex, tt.description)
@@ -200,37 +175,14 @@ func TestExtractIndexFromHostname_Invalid(t *testing.T) {
 	}
 }
 
-// ==================== NewIndexManager Tests ====================
+// ==================== NewPodIndexTracker Tests ====================
 
 func TestNewIndexManager_EmptyPods(t *testing.T) {
-	im := NewIndexManager(map[string]int{}, 5)
+	im := NewPodIndexTracker(map[string]int{}, 5)
 
 	assert.NotNil(t, im)
 	assert.NotNil(t, im.podIndexMap)
 	assert.Equal(t, -1, im.highestIndex)
-}
-
-func TestNewIndexManager_ValidPods(t *testing.T) {
-	podIndexMap := map[string]int{
-		"pod-a": 0,
-		"pod-b": 2,
-		"pod-c": 4,
-	}
-
-	im := NewIndexManager(podIndexMap, 10)
-
-	// Verify pods are assigned correctly
-	index, exists := im.GetPodIndex("pod-a")
-	assert.True(t, exists)
-	assert.Equal(t, 0, index)
-
-	index, exists = im.GetPodIndex("pod-b")
-	assert.True(t, exists)
-	assert.Equal(t, 2, index)
-
-	index, exists = im.GetPodIndex("pod-c")
-	assert.True(t, exists)
-	assert.Equal(t, 4, index)
 }
 
 // ==================== GetIndex Tests ====================
@@ -265,7 +217,7 @@ func TestGetIndex_NewPods_HoleFilling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, podIndexMap := createTestPodsWithIndices(tt.existingIndices)
-			im := NewIndexManager(podIndexMap, 10)
+			im := NewPodIndexTracker(podIndexMap, 10)
 
 			newPod := createDummyHostnameIndexTestPod("new-pod", "irrelevant")
 			actualIndex, err := im.GetIndex(newPod)
@@ -278,7 +230,7 @@ func TestGetIndex_NewPods_HoleFilling(t *testing.T) {
 
 func TestGetIndex_ExistingPods(t *testing.T) {
 	existingPods, podIndexMap := createTestPodsWithIndices([]int{0, 2, 4})
-	im := NewIndexManager(podIndexMap, 10)
+	im := NewPodIndexTracker(podIndexMap, 10)
 
 	// Get index for existing pod - should return same index
 	existingPod := existingPods[1] // Pod with index 2
@@ -294,7 +246,7 @@ func TestGetIndex_ExistingPods(t *testing.T) {
 }
 
 func TestGetIndex_NilPod(t *testing.T) {
-	im := NewIndexManager(map[string]int{}, 5)
+	im := NewPodIndexTracker(map[string]int{}, 5)
 
 	index, err := im.GetIndex(nil)
 	assert.Error(t, err, "should return error for nil pod")
@@ -304,7 +256,7 @@ func TestGetIndex_NilPod(t *testing.T) {
 func TestGetIndex_SequentialAssignment(t *testing.T) {
 	// Starting with indices [0, 3, 5] - continuous sequence is just [0]
 	_, podIndexMap := createTestPodsWithIndices([]int{0, 3, 5})
-	im := NewIndexManager(podIndexMap, 10)
+	im := NewPodIndexTracker(podIndexMap, 10)
 
 	// Add new pods sequentially - should extend continuous sequence from 0
 	// Starting with [0, 3, 5], next available should be 1 (extend continuous from 0)
@@ -346,7 +298,7 @@ func TestGetIndex_ContinuousAssignment(t *testing.T) {
 		"pod-b": 1,
 		"pod-c": 2,
 	}
-	im := NewIndexManager(podIndexMap, 10)
+	im := NewPodIndexTracker(podIndexMap, 10)
 
 	// Add new pod - should get next available index
 	newPod := createDummyHostnameIndexTestPod("new-pod", "irrelevant")
@@ -361,7 +313,7 @@ func TestIndexManager_ComplexScenario(t *testing.T) {
 	// Complex scenario: algorithm prioritizes extending continuous sequence from 0
 	// Start with pods at indices [0, 2] - continuous sequence is [0], gap at 1
 	_, podIndexMap := createTestPodsWithIndices([]int{0, 2})
-	im := NewIndexManager(podIndexMap, 10)
+	im := NewPodIndexTracker(podIndexMap, 10)
 
 	// First new pod should extend continuous sequence from [0] to [0, 1]
 	pod1 := createDummyHostnameIndexTestPod("pod1", "irrelevant")
@@ -392,7 +344,7 @@ func TestIndexManager_ComplexScenario(t *testing.T) {
 
 func TestIndexManager_ContinuousAssignment(t *testing.T) {
 	// Create manager with no initial assignments
-	im := NewIndexManager(map[string]int{}, 5)
+	im := NewPodIndexTracker(map[string]int{}, 5)
 
 	// Add pods sequentially
 	pod0 := createDummyHostnameIndexTestPod("pod0", "irrelevant")
@@ -413,26 +365,12 @@ func TestIndexManager_ContinuousAssignment(t *testing.T) {
 }
 
 func TestGetIndex_EmptyManager(t *testing.T) {
-	im := NewIndexManager(map[string]int{}, 5)
+	im := NewPodIndexTracker(map[string]int{}, 5)
 
 	pod := createDummyHostnameIndexTestPod("test-pod", "irrelevant")
 	index, err := im.GetIndex(pod)
 	require.NoError(t, err, "should succeed and assign first index")
 	assert.Equal(t, 0, index, "should assign index 0")
-}
-
-func TestIndexManager_LargeIndices(t *testing.T) {
-	name := "test-pod"
-
-	// Create manager with a very large index
-	indexedPods := map[string]int{name: 1000}
-	manager := NewIndexManager(indexedPods, 10)
-	index, exists := manager.GetPodIndex(name)
-	assert.True(t, exists)
-	assert.Equal(t, 1000, index)
-
-	// Next available should be 0 since no continuous sequence from 0
-	assert.Equal(t, 0, manager.assignAvailableIndex("large-test-pod"))
 }
 
 // createTestPodWithHostname creates a test pod with the specified name, uid, and hostname
@@ -452,9 +390,9 @@ func createTestLogger() logr.Logger {
 	return log.Log.WithName("test")
 }
 
-// assertIndexManagerMappings verifies the IndexManager has the expected pod name to index mappings
-func assertIndexManagerMappings(t *testing.T, im *IndexManager, expectedMappings map[string]int) {
-	// We can't directly access IndexManager internals, so we test via GetIndex behavior
+// assertIndexManagerMappings verifies the PodIndexTracker has the expected pod name to index mappings
+func assertIndexManagerMappings(t *testing.T, im *PodIndexTracker, expectedMappings map[string]int) {
+	// We can't directly access PodIndexTracker internals, so we test via GetIndex behavior
 	// Create test pods with the expected names and verify they return the expected indices
 	for name, expectedIndex := range expectedMappings {
 		testPod := &corev1.Pod{
@@ -480,7 +418,7 @@ func TestInitIndexManager_ValidPods(t *testing.T) {
 		createTestPodWithHostname("pod-c", "test-clique-4"),
 	}
 
-	// Initialize IndexManager with expected size 5
+	// Initialize PodIndexTracker with expected size 5
 	im := InitIndexManger(pods, 10, logger)
 
 	// Verify mappings
@@ -495,7 +433,7 @@ func TestInitIndexManager_ValidPods(t *testing.T) {
 func TestInitIndexManager_EmptyPods(t *testing.T) {
 	logger := createTestLogger()
 
-	// Initialize IndexManager with empty pod list
+	// Initialize PodIndexTracker with empty pod list
 	im := InitIndexManger([]*corev1.Pod{}, 10, logger)
 
 	// Verify no mappings exist (try to get index for new pod should get next available)
@@ -515,7 +453,7 @@ func TestInitIndexManager_SparseIndices(t *testing.T) {
 		createTestPodWithHostname("pod-c", "test-clique-4"),
 	}
 
-	// Initialize IndexManager with expected size 6
+	// Initialize PodIndexTracker with expected size 6
 	im := InitIndexManger(pods, 10, logger)
 
 	// Verify mappings
@@ -544,7 +482,7 @@ func TestInitIndexManager_ValidPods_NoLimits(t *testing.T) {
 		createTestPodWithHostname("pod-b", "test-clique-1"),
 	}
 
-	// Initialize IndexManager
+	// Initialize PodIndexTracker
 	im := InitIndexManger(pods, 10, logger)
 
 	// All valid pods should be mapped
@@ -570,7 +508,7 @@ func TestInitIndexManager_LargeExpectedSize(t *testing.T) {
 		createTestPodWithHostname("pod-b", "test-clique-1"),
 	}
 
-	// Initialize IndexManager with large expected size
+	// Initialize PodIndexTracker with large expected size
 	im := InitIndexManger(pods, 10, logger)
 
 	// Verify mappings work correctly
@@ -594,7 +532,7 @@ func TestInitIndexManager_InvalidHostnames(t *testing.T) {
 		createTestPodWithHostname("pod-valid2", "test-clique-2"),
 	}
 
-	// Initialize IndexManager
+	// Initialize PodIndexTracker
 	im := InitIndexManger(pods, 10, logger)
 
 	// Only valid pods should be mapped
@@ -615,7 +553,7 @@ func TestInitIndexManager_EmptyHostnames(t *testing.T) {
 		createTestPodWithHostname("pod-empty2", ""),
 	}
 
-	// Initialize IndexManager
+	// Initialize PodIndexTracker
 	im := InitIndexManger(pods, 10, logger)
 
 	// Only pod with valid hostname should be mapped
@@ -640,7 +578,7 @@ func TestInitIndexManager_MixedValidInvalidIndices(t *testing.T) {
 		validPod2,
 	}
 
-	// Initialize IndexManager
+	// Initialize PodIndexTracker
 	im := InitIndexManger(pods, 10, logger)
 
 	// All valid pods should be mapped, regardless of index value
@@ -679,7 +617,7 @@ func TestInitIndexManager_DuplicateIndices(t *testing.T) {
 
 	pods := []*corev1.Pod{pod1, pod2, pod3}
 
-	// Initialize IndexManager
+	// Initialize PodIndexTracker
 	im := InitIndexManger(pods, 10, logger)
 
 	index2, err2 := im.GetIndex(pod2)
@@ -711,7 +649,7 @@ func TestInitIndexManager_NilPods(t *testing.T) {
 		nil, // Another nil pod
 	}
 
-	// Initialize IndexManager (should handle nil pods gracefully)
+	// Initialize PodIndexTracker (should handle nil pods gracefully)
 	im := InitIndexManger(pods, 10, logger)
 
 	// Only valid pods should be mapped
@@ -736,7 +674,7 @@ func TestInitIndexManager_MixedScenario(t *testing.T) {
 		createTestPodWithHostname("pod-valid3", "test-clique-2"),
 	}
 
-	// Initialize IndexManager with expected size 5
+	// Initialize PodIndexTracker with expected size 5
 	im := InitIndexManger(pods, 10, logger)
 
 	// Only valid, in-bounds pods should be mapped

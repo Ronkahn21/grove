@@ -29,24 +29,17 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// IndexManagerStats contains statistics about the index manager state.
-type IndexManagerStats struct {
-	HighestIndex     int // Highest continuous index starting from 0
-	MaxIndexAssigned int // Maximum index that has been assigned
-	UsedIndices      int // Total number of indices in use
-}
-
-// IndexManager manages pod indices for PodCliques.
+// PodIndexTracker manages pod indices for PodCliques.
 // Prioritizes filling lower indices first by maintaining a continuous sequence from 0.
-type IndexManager struct {
+type PodIndexTracker struct {
 	podIndexMap  *bimaps.BiMap[string, int] // Bidirectional pod name ↔ index mapping
 	highestIndex int                        // Highest continuous index starting from 0
 	maxAssigned  int                        // Maximum index that has been assigned
 }
 
-// NewIndexManager creates a new IndexManager with pre-existing pod index mappings.
-func NewIndexManager(podIndexMappings map[string]int, maxAssigned int) *IndexManager {
-	manager := &IndexManager{
+// NewPodIndexTracker creates a new PodIndexTracker with pre-existing pod index mappings.
+func NewPodIndexTracker(podIndexMappings map[string]int, maxAssigned int) *PodIndexTracker {
+	manager := &PodIndexTracker{
 		podIndexMap:  bimaps.New[string, int](),
 		highestIndex: -1, // Initialize to -1 to indicate no indices assigned yet
 		maxAssigned:  maxAssigned,
@@ -62,14 +55,9 @@ func NewIndexManager(podIndexMappings map[string]int, maxAssigned int) *IndexMan
 	return manager
 }
 
-// GetPodIndex returns the index for the given pod name if it exists.
-func (im *IndexManager) GetPodIndex(podName string) (int, bool) {
-	return im.podIndexMap.GetByKey(podName)
-}
-
 // assignAvailableIndex assigns the next available index to a pod.
-func (im *IndexManager) assignAvailableIndex(podName string) int {
-	if index, exists := im.GetPodIndex(podName); exists {
+func (im *PodIndexTracker) assignAvailableIndex(podName string) int {
+	if index, exists := im.podIndexMap.GetByKey(podName); exists {
 		return index // Pod already has an index assigned
 	}
 	defer im.updateHighestContinuousIndex()
@@ -87,7 +75,7 @@ func (im *IndexManager) assignAvailableIndex(podName string) int {
 }
 
 // updateHighestContinuousIndex updates the highest continuous index starting from 0.
-func (im *IndexManager) updateHighestContinuousIndex() {
+func (im *PodIndexTracker) updateHighestContinuousIndex() {
 	if !im.podIndexMap.HasValue(0) {
 		im.highestIndex = -1
 		return
@@ -107,13 +95,13 @@ func (im *IndexManager) updateHighestContinuousIndex() {
 }
 
 // GetIndex returns the index for the given pod, assigning a new one if needed.
-func (im *IndexManager) GetIndex(pod *corev1.Pod) (int, error) {
+func (im *PodIndexTracker) GetIndex(pod *corev1.Pod) (int, error) {
 	if pod == nil {
 		return -1, errors.New("pod is nil")
 	}
 
 	// Return existing index if pod is already known
-	if existingIndex, exists := im.GetPodIndex(pod.Name); exists {
+	if existingIndex, exists := im.podIndexMap.GetByKey(pod.Name); exists {
 		return existingIndex, nil
 	}
 
@@ -143,8 +131,8 @@ func extractIndexFromHostname(hostname string) (int, error) {
 	return index, nil
 }
 
-// InitIndexManger creates a new IndexManager initialized with existing pods.
-func InitIndexManger(existingPods []*corev1.Pod, maxAssigned int, logger logr.Logger) *IndexManager {
+// InitIndexManger creates a new PodIndexTracker initialized with existing pods.
+func InitIndexManger(existingPods []*corev1.Pod, maxAssigned int, logger logr.Logger) *PodIndexTracker {
 	indexedPods := make(map[string]int, len(existingPods))
 	usedIndices := sets.New[int]()
 
@@ -163,7 +151,7 @@ func InitIndexManger(existingPods []*corev1.Pod, maxAssigned int, logger logr.Lo
 		usedIndices.Insert(index)
 	}
 
-	return NewIndexManager(indexedPods, maxAssigned)
+	return NewPodIndexTracker(indexedPods, maxAssigned)
 }
 
 // validateExtractionError checks if index extraction from hostname failed
