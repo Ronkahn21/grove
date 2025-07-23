@@ -33,6 +33,7 @@ func GetPodGangSetReplicaIndexFromPodCliqueFQN(pgsName, pclqFQNName string) (int
 	return strconv.Atoi(pclqFQNName[replicaStartIndex:replicaEndIndex])
 }
 
+// GetPodGangSetNameFromPodCliqueFQN extracts the PodGangSet name from a Pod Clique FQN name.
 func GetPodGangSetNameFromPodCliqueFQN(pclqFQNName string) string {
 	parts := strings.Split(pclqFQNName, "-")
 	return parts[0]

@@ -205,7 +205,6 @@ func getSelectorLabelsForPods(pclqObjectMeta metav1.ObjectMeta) map[string]strin
 }
 
 func getLabels(pclqObjectMeta metav1.ObjectMeta, pgsName, podGangName string, pgsReplicaIndex int) map[string]string {
-
 	labels := map[string]string{
 		grovecorev1alpha1.LabelPodClique:              pclqObjectMeta.Name,
 		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
