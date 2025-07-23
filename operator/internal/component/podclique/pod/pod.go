@@ -135,7 +135,7 @@ func (r _resource) Sync(ctx context.Context, logger logr.Logger, pclq *grovecore
 
 func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName string, pod *corev1.Pod, indexMg *indexer.IndexManager) error {
 	// Extract PGS replica index from PodClique name for now (will be replaced with direct parameter)
-	pgsName := k8sutils.GetFirstOwnerName(pclq.ObjectMeta)
+	pgsName := utils.GetPodGangSetNameFromPodCliqueFQN(pclq.Name)
 	pgsReplicaIndex, err := utils.GetPodGangSetReplicaIndexFromPodCliqueFQN(pgsName, pclq.Name)
 	if err != nil {
 		return groveerr.WrapError(err,
@@ -145,7 +145,7 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 		)
 	}
 
-	labels := getLabels(pclq.ObjectMeta, podGangName, pgsReplicaIndex)
+	labels := getLabels(pclq.ObjectMeta, pgsName, podGangName, pgsReplicaIndex)
 	pod.ObjectMeta = metav1.ObjectMeta{
 		Name:      grovecorev1alpha1.GeneratePodName(pclq.Name),
 		Namespace: pclq.Namespace,
@@ -204,8 +204,7 @@ func getSelectorLabelsForPods(pclqObjectMeta metav1.ObjectMeta) map[string]strin
 	)
 }
 
-func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaIndex int) map[string]string {
-	pgsName := k8sutils.GetFirstOwnerName(pclqObjectMeta)
+func getLabels(pclqObjectMeta metav1.ObjectMeta, pgsName, podGangName string, pgsReplicaIndex int) map[string]string {
 
 	labels := map[string]string{
 		grovecorev1alpha1.LabelPodClique:              pclqObjectMeta.Name,

@@ -32,3 +32,8 @@ func GetPodGangSetReplicaIndexFromPodCliqueFQN(pgsName, pclqFQNName string) (int
 	replicaEndIndex := replicaStartIndex + hyphenIndex
 	return strconv.Atoi(pclqFQNName[replicaStartIndex:replicaEndIndex])
 }
+
+func GetPodGangSetNameFromPodCliqueFQN(pclqFQNName string) string {
+	parts := strings.Split(pclqFQNName, "-")
+	return parts[0]
+}
