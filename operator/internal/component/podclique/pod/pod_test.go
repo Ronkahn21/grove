@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -39,10 +40,16 @@ func assertExpectedEnvVars(t *testing.T, container corev1.Container, expectedEnv
 }
 
 // Helper function to assert environment variable field paths for Downward API
-func assertEnvVarFieldPath(t *testing.T, container corev1.Container) {
+func assertEnvVarFieldPath(t *testing.T, container corev1.Container, directValueEnvVars []string) {
+	// Create a set of env vars that should use direct values
+	directValueSet := make(map[string]bool)
+	for _, envVar := range directValueEnvVars {
+		directValueSet[envVar] = true
+	}
+
 	for _, env := range container.Env {
-		// Skip headless service env var as it uses direct value
-		if env.Name == envVarGroveHeadlessService {
+		// Skip env vars that should use direct values
+		if directValueSet[env.Name] {
 			assert.NotEmpty(t, env.Value, "environment variable %s should have a direct value", env.Name)
 			continue
 		}
@@ -61,8 +68,6 @@ func assertEnvVarFieldPath(t *testing.T, container corev1.Container) {
 		case envVarGrovePCLQName:
 			assert.Equal(t, "metadata.labels['grove.io/podclique']", env.ValueFrom.FieldRef.FieldPath,
 				"incorrect field path for %s", env.Name)
-		case envVarGroveHeadlessService:
-			// This is a direct value, not from fieldRef, so we just check it exists
 		}
 	}
 }
@@ -123,10 +128,11 @@ func assertNoDuplicateEnvVars(t *testing.T, container corev1.Container) {
 
 func TestAddGroveEnvironmentVariables(t *testing.T) {
 	tests := []struct {
-		name              string
-		pclq              *grovecorev1alpha1.PodClique
-		expectedEnvVars   []string
-		unexpectedEnvVars []string
+		name               string
+		pclq               *grovecorev1alpha1.PodClique
+		expectedEnvVars    []string
+		unexpectedEnvVars  []string
+		directValueEnvVars []string
 	}{
 		{
 			name: "standalone PodClique",
@@ -152,6 +158,11 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				envVarGrovePCLQName,
 				envVarGrovePCLQIndex,
 				envVarGroveHeadlessService,
+				envVarGrovePodIndex,
+			},
+			directValueEnvVars: []string{
+				envVarGroveHeadlessService,
+				envVarGrovePodIndex,
 			},
 		},
 		{
@@ -181,6 +192,11 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				envVarGrovePCLQName,
 				envVarGrovePCLQIndex,
 				envVarGroveHeadlessService,
+				envVarGrovePodIndex,
+			},
+			directValueEnvVars: []string{
+				envVarGroveHeadlessService,
+				envVarGrovePodIndex,
 			},
 		},
 	}
@@ -209,7 +225,7 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				}
 
 				// Verify Downward API configuration for expected variables
-				assertEnvVarFieldPath(t, container)
+				assertEnvVarFieldPath(t, container, tt.directValueEnvVars)
 			}
 		})
 	}

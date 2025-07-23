@@ -18,7 +18,7 @@ package utils
 
 import (
 	"strings"
-	
+
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -35,23 +35,23 @@ func MergeEnvVars(existing []corev1.EnvVar, newEnvVars []corev1.EnvVar) []corev1
 	for _, envVar := range newEnvVars {
 		newEnvMap[envVar.Name] = envVar
 	}
-	
+
 	result := make([]corev1.EnvVar, 0, len(existing)+len(newEnvVars))
-	
+
 	// Process existing environment variables
 	for _, envVar := range existing {
 		if newEnvVar, exists := newEnvMap[envVar.Name]; exists {
-			result = append(result, newEnvVar)      // Replace with new value
-			delete(newEnvMap, envVar.Name)          // Mark as processed
+			result = append(result, newEnvVar) // Replace with new value
+			delete(newEnvMap, envVar.Name)     // Mark as processed
 		} else {
-			result = append(result, envVar)         // Keep existing
+			result = append(result, envVar) // Keep existing
 		}
 	}
-	
+
 	// Add any remaining new environment variables that weren't replacements
 	for _, envVar := range newEnvMap {
 		result = append(result, envVar)
 	}
-	
+
 	return result
 }

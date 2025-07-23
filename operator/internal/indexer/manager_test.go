@@ -1,3 +1,19 @@
+// /*
+// Copyright 2025 The Grove Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// */
+
 package indexer
 
 import (
@@ -276,6 +292,7 @@ func TestGetIndex_ExistingPods(t *testing.T) {
 	assert.Equal(t, 2, index2)
 	assert.Equal(t, index, index2, "should return same index on repeated calls")
 }
+
 func TestGetIndex_NilPod(t *testing.T) {
 	im := NewIndexManager(map[string]int{}, 5)
 
@@ -283,6 +300,7 @@ func TestGetIndex_NilPod(t *testing.T) {
 	assert.Error(t, err, "should return error for nil pod")
 	assert.Equal(t, -1, index, "should return -1 for nil pod")
 }
+
 func TestGetIndex_SequentialAssignment(t *testing.T) {
 	// Starting with indices [0, 3, 5] - continuous sequence is just [0]
 	_, podIndexMap := createTestPodsWithIndices([]int{0, 3, 5})
@@ -393,6 +411,7 @@ func TestIndexManager_ContinuousAssignment(t *testing.T) {
 	require.NoError(t, err2)
 	assert.Equal(t, 2, idx2, "should assign next sequential index")
 }
+
 func TestGetIndex_EmptyManager(t *testing.T) {
 	im := NewIndexManager(map[string]int{}, 5)
 
@@ -401,6 +420,7 @@ func TestGetIndex_EmptyManager(t *testing.T) {
 	require.NoError(t, err, "should succeed and assign first index")
 	assert.Equal(t, 0, index, "should assign index 0")
 }
+
 func TestIndexManager_LargeIndices(t *testing.T) {
 	name := "test-pod"
 

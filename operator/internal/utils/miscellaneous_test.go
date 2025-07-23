@@ -25,15 +25,15 @@ import (
 
 func TestMergeEnvVars(t *testing.T) {
 	tests := []struct {
-		name        string
-		existing    []corev1.EnvVar
-		newEnvVars  []corev1.EnvVar
-		expected    []corev1.EnvVar
+		name       string
+		existing   []corev1.EnvVar
+		newEnvVars []corev1.EnvVar
+		expected   []corev1.EnvVar
 	}{
 		{
-			name:        "Empty existing env vars",
-			existing:    []corev1.EnvVar{},
-			newEnvVars:  []corev1.EnvVar{
+			name:     "Empty existing env vars",
+			existing: []corev1.EnvVar{},
+			newEnvVars: []corev1.EnvVar{
 				{Name: "NEW_VAR", Value: "new_value"},
 			},
 			expected: []corev1.EnvVar{
@@ -158,7 +158,7 @@ func TestMergeEnvVars_EmptyInputs(t *testing.T) {
 	// Test with empty inputs
 	result := MergeEnvVars([]corev1.EnvVar{}, []corev1.EnvVar{})
 	assert.Empty(t, result)
-	
+
 	// Test with nil inputs
 	result = MergeEnvVars(nil, nil)
 	assert.Empty(t, result)
@@ -171,20 +171,20 @@ func TestMergeEnvVars_PreservesOrder(t *testing.T) {
 		{Name: "VAR_B", Value: "b"},
 		{Name: "VAR_C", Value: "c"},
 	}
-	
+
 	newEnvVars := []corev1.EnvVar{
-		{Name: "VAR_B", Value: "new_b"},  // Replace middle variable
-		{Name: "VAR_D", Value: "d"},      // Add new variable
+		{Name: "VAR_B", Value: "new_b"}, // Replace middle variable
+		{Name: "VAR_D", Value: "d"},     // Add new variable
 	}
-	
+
 	result := MergeEnvVars(existing, newEnvVars)
-	
+
 	expected := []corev1.EnvVar{
 		{Name: "VAR_A", Value: "a"},
-		{Name: "VAR_B", Value: "new_b"},  // Replaced in same position
+		{Name: "VAR_B", Value: "new_b"}, // Replaced in same position
 		{Name: "VAR_C", Value: "c"},
-		{Name: "VAR_D", Value: "d"},      // Added at end
+		{Name: "VAR_D", Value: "d"}, // Added at end
 	}
-	
+
 	assert.Equal(t, expected, result)
 }

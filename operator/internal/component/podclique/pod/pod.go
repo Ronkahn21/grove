@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/indexer"
 	"github.com/NVIDIA/grove/operator/internal/utils"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
+
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
@@ -39,9 +40,9 @@ import (
 
 // constants for error codes
 const (
-	errCodeGetPod                    grovecorev1alpha1.ErrorCode = "ERR_GET_POD"
-	errCodeSyncPod                   grovecorev1alpha1.ErrorCode = "ERR_SYNC_POD"
-	errCodeDeletePod                 grovecorev1alpha1.ErrorCode = "ERR_DELETE_POD"
+	errCodeGetPod    grovecorev1alpha1.ErrorCode = "ERR_GET_POD"
+	errCodeSyncPod   grovecorev1alpha1.ErrorCode = "ERR_SYNC_POD"
+	errCodeDeletePod grovecorev1alpha1.ErrorCode = "ERR_DELETE_POD"
 
 	errCodeGetPodGang                grovecorev1alpha1.ErrorCode = "ERR_GET_PODGANG"
 	errCodeListPod                   grovecorev1alpha1.ErrorCode = "ERR_LIST_POD"
@@ -207,7 +208,7 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, podGangName string, pgsReplicaI
 	pgsName := k8sutils.GetFirstOwnerName(pclqObjectMeta)
 
 	labels := map[string]string{
-		grovecorev1alpha1.LabelPodCliqueName:          pclqObjectMeta.Name,
+		grovecorev1alpha1.LabelPodClique:              pclqObjectMeta.Name,
 		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
 		grovecorev1alpha1.LabelPodGangName:            podGangName,
 	}
@@ -248,7 +249,7 @@ func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaInd
 			Name: envVarGrovePCLQName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueName),
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodClique),
 				},
 			},
 		},

@@ -30,10 +30,10 @@ import (
 	groveerr "github.com/NVIDIA/grove/operator/internal/errors"
 	"github.com/NVIDIA/grove/operator/internal/utils"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
-	corev1 "k8s.io/api/core/v1"
 
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -343,6 +343,7 @@ func (r _resource) Delete(ctx context.Context, logger logr.Logger, pcsgObjectMet
 	logger.Info("Deleted PodCliques belonging to PodCliqueScalingGroup")
 	return nil
 }
+
 func (r _resource) getPCSGroupReplicaTotalPodSize(pgs *grovecorev1alpha1.PodGangSet, pcsg *grovecorev1alpha1.PodCliqueScalingGroup) int {
 	var pcsgReplicaTotalPodSize int
 	pcMap := make(map[string]*grovecorev1alpha1.PodCliqueTemplateSpec, len(pgs.Spec.Template.Cliques))
@@ -532,11 +533,10 @@ func getPodCliqueSelectorLabels(pcsgObjectMeta metav1.ObjectMeta) map[string]str
 func getLabels(pgsName string, pgsReplicaIndex int, pcsgName string, pcsgReplicaIndex int, pclqObjectKey client.ObjectKey, pclqTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec) map[string]string {
 	podGangName := componentutils.CreatePodGangNameForPCSG(pgsName, pgsReplicaIndex, pcsgName, pcsgReplicaIndex)
 	pclqComponentLabels := map[string]string{
-		grovecorev1alpha1.LabelAppNameKey:                        pclqObjectKey.Name,
-		grovecorev1alpha1.LabelComponentKey:                      component.NamePCSGPodClique,
-		grovecorev1alpha1.LabelPodCliqueScalingGroup:             pcsgName,
-		grovecorev1alpha1.LabelPodGang:                           podGangName,grovecorev1alpha1.LabelPodGangSetReplicaIndex:            strconv.Itoa(pgsReplicaIndex),
-		grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex: strconv.Itoa(pcsgReplicaIndex),
+		grovecorev1alpha1.LabelAppNameKey:            pclqObjectKey.Name,
+		grovecorev1alpha1.LabelComponentKey:          component.NamePCSGPodClique,
+		grovecorev1alpha1.LabelPodCliqueScalingGroup: pcsgName,
+		grovecorev1alpha1.LabelPodGang:               podGangName, grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
 		grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex: strconv.Itoa(pcsgReplicaIndex),
 	}
 	return lo.Assign(
