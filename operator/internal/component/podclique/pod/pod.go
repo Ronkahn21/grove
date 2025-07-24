@@ -23,6 +23,7 @@ import (
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 	"github.com/NVIDIA/grove/operator/internal/component"
+	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	groveerr "github.com/NVIDIA/grove/operator/internal/errors"
 	"github.com/NVIDIA/grove/operator/internal/indexer"
 	"github.com/NVIDIA/grove/operator/internal/utils"
@@ -68,7 +69,6 @@ const (
 	envVarGrovePGSName         = "GROVE_PGS_NAME"
 	envVarGrovePGSIndex        = "GROVE_PGS_INDEX"
 	envVarGrovePCLQName        = "GROVE_PCLQ_NAME"
-	envVarGrovePCLQIndex       = "GROVE_PCLQ_INDEX"
 	envVarGroveHeadlessService = "GROVE_HEADLESS_SERVICE"
 	envVarGrovePodIndex        = "GROVE_PCLQ_POD_INDEX"
 )
@@ -135,7 +135,7 @@ func (r _resource) Sync(ctx context.Context, logger logr.Logger, pclq *grovecore
 
 func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName string, pod *corev1.Pod, indexMg *indexer.PodIndexTracker) error {
 	// Extract PGS replica index from PodClique name for now (will be replaced with direct parameter)
-	pgsName := utils.GetPodGangSetNameFromPodCliqueFQN(pclq.Name)
+	pgsName := componentutils.GetPodGangSetName(pclq.ObjectMeta)
 	pgsReplicaIndex, err := utils.GetPodGangSetReplicaIndexFromPodCliqueFQN(pgsName, pclq.Name)
 	if err != nil {
 		return groveerr.WrapError(err,
@@ -208,7 +208,7 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, pgsName, podGangName string, pg
 	labels := map[string]string{
 		grovecorev1alpha1.LabelPodClique:              pclqObjectMeta.Name,
 		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
-		grovecorev1alpha1.LabelPodGangName:            podGangName,
+		grovecorev1alpha1.LabelPodGang:                podGangName,
 	}
 	return lo.Assign(
 		k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsName),
@@ -232,14 +232,6 @@ func addGroveEnvironmentVariables(pod *corev1.Pod, pgsName string, pgsReplicaInd
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodGangSetReplicaIndex),
-				},
-			},
-		},
-		{
-			Name: envVarGrovePCLQIndex,
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueReplicaIndex),
 				},
 			},
 		},
