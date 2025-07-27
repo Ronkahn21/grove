@@ -22,7 +22,6 @@ import (
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -39,35 +38,19 @@ func assertExpectedEnvVars(t *testing.T, container corev1.Container, expectedEnv
 	}
 }
 
-// Helper function to assert environment variable field paths for Downward API
-func assertEnvVarFieldPath(t *testing.T, container corev1.Container, directValueEnvVars []string) {
-	// Create a set of env vars that should use direct values
-	directValueSet := make(map[string]bool)
-	for _, envVar := range directValueEnvVars {
-		directValueSet[envVar] = true
+// Helper function to assert Grove environment variables have direct values
+func assertGroveEnvVarsDirectValues(t *testing.T, container corev1.Container, groveEnvVars []string) {
+	// Create a set of Grove env vars for quick lookup
+	groveEnvVarSet := make(map[string]bool)
+	for _, envVar := range groveEnvVars {
+		groveEnvVarSet[envVar] = true
 	}
 
 	for _, env := range container.Env {
-		// Skip env vars that should use direct values
-		if directValueSet[env.Name] {
-			assert.NotEmpty(t, env.Value, "environment variable %s should have a direct value", env.Name)
-			continue
-		}
-
-		require.NotNil(t, env.ValueFrom, "environment variable %s should use Downward API FieldRef", env.Name)
-		require.NotNil(t, env.ValueFrom.FieldRef, "environment variable %s should use Downward API FieldRef", env.Name)
-
-		// Check specific field paths
-		switch env.Name {
-		case envVarGrovePGSName:
-			assert.Equal(t, "metadata.labels['app.kubernetes.io/part-of']", env.ValueFrom.FieldRef.FieldPath,
-				"incorrect field path for %s", env.Name)
-		case envVarGrovePGSIndex:
-			assert.Equal(t, "metadata.labels['grove.io/podgangset-replica-index']", env.ValueFrom.FieldRef.FieldPath,
-				"incorrect field path for %s", env.Name)
-		case envVarGrovePCLQName:
-			assert.Equal(t, "metadata.labels['grove.io/podclique']", env.ValueFrom.FieldRef.FieldPath,
-				"incorrect field path for %s", env.Name)
+		// Only validate Grove environment variables
+		if groveEnvVarSet[env.Name] {
+			assert.NotEmpty(t, env.Value, "Grove environment variable %s should have a direct value", env.Name)
+			assert.Nil(t, env.ValueFrom, "Grove environment variable %s should not use ValueFrom (Downward API)", env.Name)
 		}
 	}
 }
@@ -83,14 +66,12 @@ func assertReplacedEnvVars(t *testing.T, container corev1.Container, shouldRepla
 		envVarNames[env.Name] = env
 	}
 
-	for envName, expectedFieldPath := range shouldReplace {
+	for envName, expectedValue := range shouldReplace {
 		envVar, found := envVarNames[envName]
 		assert.True(t, found, "environment variable %s should exist", envName)
 		if found {
-			require.NotNil(t, envVar.ValueFrom, "environment variable %s should use Downward API FieldRef", envName)
-			require.NotNil(t, envVar.ValueFrom.FieldRef, "environment variable %s should use Downward API FieldRef", envName)
-			assert.Equal(t, expectedFieldPath, envVar.ValueFrom.FieldRef.FieldPath,
-				"environment variable %s has wrong field path", envName)
+			assert.Equal(t, expectedValue, envVar.Value,
+				"environment variable %s has wrong value", envName)
 		}
 	}
 }
@@ -128,11 +109,10 @@ func assertNoDuplicateEnvVars(t *testing.T, container corev1.Container) {
 
 func TestAddGroveEnvironmentVariables(t *testing.T) {
 	tests := []struct {
-		name               string
-		pclq               *grovecorev1alpha1.PodClique
-		expectedEnvVars    []string
-		unexpectedEnvVars  []string
-		directValueEnvVars []string
+		name              string
+		pclq              *grovecorev1alpha1.PodClique
+		expectedEnvVars   []string
+		unexpectedEnvVars []string
 	}{
 		{
 			name: "standalone PodClique",
@@ -153,15 +133,11 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				},
 			},
 			expectedEnvVars: []string{
-				envVarGrovePGSName,
-				envVarGrovePGSIndex,
-				envVarGrovePCLQName,
-				envVarGroveHeadlessService,
-				envVarGrovePodIndex,
-			},
-			directValueEnvVars: []string{
-				envVarGroveHeadlessService,
-				envVarGrovePodIndex,
+				grovecorev1alpha1.EnvVarPGSName,
+				grovecorev1alpha1.EnvVarPGSIndex,
+				grovecorev1alpha1.EnvVarPCLQName,
+				grovecorev1alpha1.EnvVarHeadlessService,
+				grovecorev1alpha1.EnvVarPodIndex,
 			},
 		},
 		{
@@ -186,15 +162,11 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				},
 			},
 			expectedEnvVars: []string{
-				envVarGrovePGSName,
-				envVarGrovePGSIndex,
-				envVarGrovePCLQName,
-				envVarGroveHeadlessService,
-				envVarGrovePodIndex,
-			},
-			directValueEnvVars: []string{
-				envVarGroveHeadlessService,
-				envVarGrovePodIndex,
+				grovecorev1alpha1.EnvVarPGSName,
+				grovecorev1alpha1.EnvVarPGSIndex,
+				grovecorev1alpha1.EnvVarPCLQName,
+				grovecorev1alpha1.EnvVarHeadlessService,
+				grovecorev1alpha1.EnvVarPodIndex,
 			},
 		},
 	}
@@ -205,7 +177,7 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 				Spec: tt.pclq.Spec.PodSpec,
 			}
 
-			addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+			addEnvironmentVariables(pod, tt.pclq, "test-pgs", 0, 0)
 
 			// Check that all containers have the expected environment variables
 			for _, container := range pod.Spec.Containers {
@@ -222,8 +194,8 @@ func TestAddGroveEnvironmentVariables(t *testing.T) {
 					}
 				}
 
-				// Verify Downward API configuration for expected variables
-				assertEnvVarFieldPath(t, container, tt.directValueEnvVars)
+				// Verify Grove environment variables use direct values
+				assertGroveEnvVarsDirectValues(t, container, tt.expectedEnvVars)
 			}
 		})
 	}
@@ -261,14 +233,14 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				},
 			},
 			expectedEnvVars: []string{
-				envVarGrovePGSName,
-				envVarGrovePGSIndex,
-				envVarGrovePCLQName,
-				envVarGroveHeadlessService,
+				grovecorev1alpha1.EnvVarPGSName,
+				grovecorev1alpha1.EnvVarPGSIndex,
+				grovecorev1alpha1.EnvVarPCLQName,
+				grovecorev1alpha1.EnvVarHeadlessService,
 			},
 			shouldReplace: map[string]string{
-				"GROVE_PGS_NAME":  "metadata.labels['app.kubernetes.io/part-of']",
-				"GROVE_PGS_INDEX": "metadata.labels['grove.io/podgangset-replica-index']",
+				"GROVE_PGS_NAME":  "test-pgs",
+				"GROVE_PGS_INDEX": "0",
 			},
 		},
 		{
@@ -294,10 +266,10 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				},
 			},
 			expectedEnvVars: []string{
-				envVarGrovePGSName,
-				envVarGrovePGSIndex,
-				envVarGrovePCLQName,
-				envVarGroveHeadlessService,
+				grovecorev1alpha1.EnvVarPGSName,
+				grovecorev1alpha1.EnvVarPGSIndex,
+				grovecorev1alpha1.EnvVarPCLQName,
+				grovecorev1alpha1.EnvVarHeadlessService,
 			},
 			shouldPreserve: []string{"USER_VAR", "CUSTOM_CONFIG"},
 		},
@@ -325,13 +297,13 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				},
 			},
 			expectedEnvVars: []string{
-				envVarGrovePGSName,
-				envVarGrovePGSIndex,
-				envVarGrovePCLQName,
-				envVarGroveHeadlessService,
+				grovecorev1alpha1.EnvVarPGSName,
+				grovecorev1alpha1.EnvVarPGSIndex,
+				grovecorev1alpha1.EnvVarPCLQName,
+				grovecorev1alpha1.EnvVarHeadlessService,
 			},
 			shouldReplace: map[string]string{
-				"GROVE_PGS_NAME": "metadata.labels['app.kubernetes.io/part-of']",
+				"GROVE_PGS_NAME": "test-pgs",
 			},
 			shouldPreserve: []string{"USER_VAR", "CUSTOM_CONFIG"},
 		},
@@ -361,10 +333,10 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				},
 			},
 			expectedEnvVars: []string{
-				envVarGrovePGSName,
-				envVarGrovePGSIndex,
-				envVarGrovePCLQName,
-				envVarGroveHeadlessService,
+				grovecorev1alpha1.EnvVarPGSName,
+				grovecorev1alpha1.EnvVarPGSIndex,
+				grovecorev1alpha1.EnvVarPCLQName,
+				grovecorev1alpha1.EnvVarHeadlessService,
 			},
 			shouldReplace:  map[string]string{},
 			shouldPreserve: []string{"USER_VAR"},
@@ -377,7 +349,7 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				Spec: tt.pclq.Spec.PodSpec,
 			}
 
-			addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+			addEnvironmentVariables(pod, tt.pclq, "test-pgs", 0, 0)
 
 			// Check that all containers have the expected environment variables
 			for _, container := range pod.Spec.Containers {
@@ -392,16 +364,22 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 
 func TestAddGroveEnvironmentVariables_Idempotent(t *testing.T) {
 	pod := createTestPod()
+	pclq := &grovecorev1alpha1.PodClique{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pclq",
+			Namespace: "test-ns",
+		},
+	}
 
-	// Call addGroveEnvironmentVariables multiple times
-	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+	// Call addEnvironmentVariables multiple times
+	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
 	envVarsAfterFirst := make([]corev1.EnvVar, len(pod.Spec.Containers[0].Env))
 	copy(envVarsAfterFirst, pod.Spec.Containers[0].Env)
 
-	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
 	envVarsAfterSecond := pod.Spec.Containers[0].Env
 
-	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
 	envVarsAfterThird := pod.Spec.Containers[0].Env
 
 	// All calls should produce the same result
@@ -418,9 +396,15 @@ func TestAddGroveEnvironmentVariables_EmptyContainers(t *testing.T) {
 			Containers: []corev1.Container{},
 		},
 	}
+	pclq := &grovecorev1alpha1.PodClique{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pclq",
+			Namespace: "test-ns",
+		},
+	}
 
 	// Should not panic with empty containers
-	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
 	assert.Empty(t, pod.Spec.Containers)
 }
 
@@ -442,15 +426,21 @@ func TestAddGroveEnvironmentVariables_MultipleContainers(t *testing.T) {
 			},
 		},
 	}
+	pclq := &grovecorev1alpha1.PodClique{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pclq",
+			Namespace: "test-ns",
+		},
+	}
 
-	addGroveEnvironmentVariables(pod, "test-pgs", 0, 0)
+	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
 
 	// Both containers should have Grove environment variables
 	expectedEnvVars := []string{
-		envVarGrovePGSName,
-		envVarGrovePGSIndex,
-		envVarGrovePCLQName,
-		envVarGroveHeadlessService,
+		grovecorev1alpha1.EnvVarPGSName,
+		grovecorev1alpha1.EnvVarPGSIndex,
+		grovecorev1alpha1.EnvVarPCLQName,
+		grovecorev1alpha1.EnvVarHeadlessService,
 	}
 
 	for _, container := range pod.Spec.Containers {

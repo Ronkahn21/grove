@@ -240,15 +240,26 @@ func hasPodGangSchedulingGate(pod *corev1.Pod) bool {
 }
 
 func (r _resource) createPods(ctx context.Context, logger logr.Logger, pclq *grovecorev1alpha1.PodClique, podGangName string, numPods int, existingPods []*corev1.Pod) (int, error) {
+	// Pre-calculate all needed indices to avoid race conditions
+	availableIndices := indexer.GetNextAvailableIndices(existingPods, numPods, logger)
+	if len(availableIndices) < numPods {
+		// should not happen, but if it does, we should not proceed with pod creation
+		return 0, groveerr.WrapError(fmt.Errorf("insufficient available indices: need %d, got %d", numPods, len(availableIndices)),
+			errCodeSyncPod,
+			component.OperationSync,
+			fmt.Sprintf("error getting available indices for Pods in PodClique %v", client.ObjectKeyFromObject(pclq)),
+		)
+	}
+
 	createTasks := make([]utils.Task, 0, numPods)
-	indexManager := indexer.InitIndexManger(existingPods, int(pclq.Spec.Replicas), logger)
 
 	for i := range numPods {
+		podIndex := availableIndices[i] // Capture the specific index for this pod
 		createTask := utils.Task{
 			Name: fmt.Sprintf("CreatePod-%s-%d", pclq.Name, i),
 			Fn: func(ctx context.Context) error {
 				pod := &corev1.Pod{}
-				if err := r.buildResource(pclq, podGangName, pod, indexManager); err != nil {
+				if err := r.buildResource(pclq, podGangName, pod, podIndex); err != nil {
 					return groveerr.WrapError(err,
 						errCodeSyncPod,
 						component.OperationSync,

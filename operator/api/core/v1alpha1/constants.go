@@ -36,6 +36,7 @@ const (
 	LabelPodGangSetReplicaIndex = "grove.io/podgangset-replica-index"
 	// LabelPodCliqueScalingGroup is a key for a label that sets the PodCliqueScalingGroup name.
 	LabelPodCliqueScalingGroup = "grove.io/podcliquescalinggroup"
+
 	// LabelPodCliqueScalingGroupReplicaIndex is a key for a label that sets the replica index of a PCSG within PodGangSet.
 	LabelPodCliqueScalingGroupReplicaIndex = "grove.io/podcliquescalinggroup-replica-index"
 )
@@ -68,6 +69,20 @@ const (
 	EventDeleted = "Deleted"
 	// EventDeleteError is the event type which indicates that the delete operation has failed.
 	EventDeleteError = "DeleteError"
+)
+
+// Constants for Grove environment variables
+const (
+	// EnvVarPGSName is the environment variable name for PodGangSet name
+	EnvVarPGSName = "GROVE_PGS_NAME"
+	// EnvVarPGSIndex is the environment variable name for PodGangSet replica index
+	EnvVarPGSIndex = "GROVE_PGS_INDEX"
+	// EnvVarPCLQName is the environment variable name for PodClique name
+	EnvVarPCLQName = "GROVE_PCLQ_NAME"
+	// EnvVarHeadlessService is the environment variable name for headless service address
+	EnvVarHeadlessService = "GROVE_HEADLESS_SERVICE"
+	// EnvVarPodIndex is the environment variable name for pod index within PodClique
+	EnvVarPodIndex = "GROVE_PCLQ_POD_INDEX"
 )
 
 // Constants for Condition Types

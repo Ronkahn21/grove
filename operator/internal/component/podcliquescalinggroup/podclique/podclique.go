@@ -415,7 +415,7 @@ func (r _resource) buildResource(logger logr.Logger, pgs *grovecorev1alpha1.PodG
 	// ------------------------------------
 	pclq.Spec = pclqTemplateSpec.Spec
 	pcsgReplicasTotalPodSize := r.getPCSGroupReplicaTotalPodSize(pgs, pcsg)
-	r.addGrovePCSGEnvironmentVariables(pclq, pcsgReplicasTotalPodSize)
+	r.addPCSGEnvironmentVariables(pclq, pcsgReplicasTotalPodSize)
 	dependentPclqNames, err := identifyFullyQualifiedStartupDependencyNames(pgs, pclq, pgsReplica, foundAtIndex)
 	if err != nil {
 		return err
@@ -424,8 +424,7 @@ func (r _resource) buildResource(logger logr.Logger, pgs *grovecorev1alpha1.PodG
 	return nil
 }
 
-func (r _resource) addGrovePCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique, pcsgTotalPCReplicaSize int) {
-	// Add GROVE_PCSG_NAME and additional PCSG-specific env vars only if this pod is part of a PodCliqueScalingGroup
+func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique, pcsgTotalPCReplicaSize int) {
 	pcsgEnvVars := []corev1.EnvVar{
 		{
 			Name: envVarGrovePCSGName,
@@ -450,7 +449,7 @@ func (r _resource) addGrovePCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodC
 	}
 	podTemplate := &pclq.Spec.PodSpec
 	for i := range pclq.Spec.PodSpec.Containers {
-		podTemplate.Containers[i].Env = utils.MergeEnvVars(podTemplate.Containers[i].Env, pcsgEnvVars)
+		podTemplate.Containers[i].Env = append(podTemplate.Containers[i].Env, pcsgEnvVars...)
 	}
 }
 
