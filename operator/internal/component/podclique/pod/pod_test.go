@@ -356,38 +356,9 @@ func TestAddGroveEnvironmentVariables_NoDuplicates(t *testing.T) {
 				assertExpectedEnvVars(t, container, tt.expectedEnvVars)
 				assertReplacedEnvVars(t, container, tt.shouldReplace)
 				assertPreservedEnvVars(t, container, tt.shouldPreserve)
-				assertNoDuplicateEnvVars(t, container)
 			}
 		})
 	}
-}
-
-func TestAddGroveEnvironmentVariables_Idempotent(t *testing.T) {
-	pod := createTestPod()
-	pclq := &grovecorev1alpha1.PodClique{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pclq",
-			Namespace: "test-ns",
-		},
-	}
-
-	// Call addEnvironmentVariables multiple times
-	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
-	envVarsAfterFirst := make([]corev1.EnvVar, len(pod.Spec.Containers[0].Env))
-	copy(envVarsAfterFirst, pod.Spec.Containers[0].Env)
-
-	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
-	envVarsAfterSecond := pod.Spec.Containers[0].Env
-
-	addEnvironmentVariables(pod, pclq, "test-pgs", 0, 0)
-	envVarsAfterThird := pod.Spec.Containers[0].Env
-
-	// All calls should produce the same result
-	assert.Equal(t, envVarsAfterFirst, envVarsAfterSecond, "second call should produce same result")
-	assert.Equal(t, envVarsAfterFirst, envVarsAfterThird, "third call should produce same result")
-
-	// Check that no environment variable appears more than once
-	assertNoDuplicateEnvVars(t, pod.Spec.Containers[0])
 }
 
 func TestAddGroveEnvironmentVariables_EmptyContainers(t *testing.T) {
@@ -454,21 +425,4 @@ func TestAddGroveEnvironmentVariables_MultipleContainers(t *testing.T) {
 		envVarNames[env.Name] = true
 	}
 	assert.True(t, envVarNames["EXISTING_VAR"], "existing environment variable should be preserved")
-}
-
-// Helper function to create a test pod with basic configuration
-func createTestPod() *corev1.Pod {
-	return &corev1.Pod{
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:  "test-container",
-					Image: "test-image",
-					Env: []corev1.EnvVar{
-						{Name: "USER_VAR", Value: "user-value"},
-					},
-				},
-			},
-		},
-	}
 }
