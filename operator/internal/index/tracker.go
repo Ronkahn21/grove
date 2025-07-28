@@ -14,7 +14,7 @@
 // limitations under the License.
 // */
 
-package indexer
+package index
 
 import (
 	"errors"
@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -30,42 +29,32 @@ import (
 // GetNextAvailableIndices returns the next N available indices for pods.
 // Extracts indices from existing pod hostnames and returns count available indices,
 // filling holes from lowest to highest (starting from 0).
-func GetNextAvailableIndices(existingPods []*corev1.Pod, requiredIndicesCount int, logger logr.Logger) []int {
-	usedIndices := extractUsedIndices(existingPods, logger)
-	return findAvailableIndices(&usedIndices, requiredIndicesCount)
+func GetNextAvailableIndices(existingPods []*corev1.Pod, requiredIndicesCount int) ([]int, error) {
+	usedIndices, err := extractUsedIndices(existingPods)
+	if err != nil {
+		return nil, err
+	}
+	return findAvailableIndices(&usedIndices, requiredIndicesCount), nil
 }
 
 // extractUsedIndices extracts and validates indices from existing pods.
-func extractUsedIndices(existingPods []*corev1.Pod, logger logr.Logger) sets.Set[int] {
+func extractUsedIndices(existingPods []*corev1.Pod) (sets.Set[int], error) {
 	usedIndices := sets.New[int]()
 
 	for _, pod := range existingPods {
-		if pod == nil {
-			continue
-		}
-
 		index, err := extractIndexFromHostname(pod.Spec.Hostname)
 		if err != nil {
-			logger.Error(err, "failed to extract index from hostname",
-				"pod", pod.Name, "hostname", pod.Spec.Hostname)
-			continue
+			return usedIndices, fmt.Errorf("failed to extract index from hostname for pod %s with hostname %s: %w", pod.Name, pod.Spec.Hostname, err)
 		}
 
 		if usedIndices.Has(index) {
-			logger.Error(fmt.Errorf("duplicate index %d", index),
-				"duplicate index found", "pod", pod.Name, "hostname", pod.Spec.Hostname)
-			continue
+			return usedIndices, fmt.Errorf("duplicate index %d found for pod %s with hostname %s", index, pod.Name, pod.Spec.Hostname)
 		}
 
 		usedIndices.Insert(index)
 	}
 
-	return usedIndices
-}
-
-// isValidIndex checks if an index is valid (non-negative).
-func isValidIndex(index int) bool {
-	return index >= 0
+	return usedIndices, nil
 }
 
 // findAvailableIndices finds the next count available indices starting from 0.
@@ -77,7 +66,6 @@ func findAvailableIndices(usedIndices *sets.Set[int], requiredIndicesCount int) 
 	for foundIndexCounter < requiredIndicesCount {
 		if !usedIndices.Has(currentIndex) {
 			availableIndices[foundIndexCounter] = currentIndex
-			usedIndices.Insert(currentIndex)
 			foundIndexCounter++
 		}
 		currentIndex++

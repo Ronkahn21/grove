@@ -27,7 +27,7 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/component"
 	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	groveerr "github.com/NVIDIA/grove/operator/internal/errors"
-	"github.com/NVIDIA/grove/operator/internal/indexer"
+	"github.com/NVIDIA/grove/operator/internal/index"
 	"github.com/NVIDIA/grove/operator/internal/utils"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
 
@@ -241,10 +241,9 @@ func hasPodGangSchedulingGate(pod *corev1.Pod) bool {
 
 func (r _resource) createPods(ctx context.Context, logger logr.Logger, pclq *grovecorev1alpha1.PodClique, podGangName string, numPods int, existingPods []*corev1.Pod) (int, error) {
 	// Pre-calculate all needed indices to avoid race conditions
-	availableIndices := indexer.GetNextAvailableIndices(existingPods, numPods, logger)
-	if len(availableIndices) < numPods {
-		// should not happen, but if it does, we should not proceed with pod creation
-		return 0, groveerr.WrapError(fmt.Errorf("insufficient available indices: need %d, got %d", numPods, len(availableIndices)),
+	availableIndices, err := index.GetNextAvailableIndices(existingPods, numPods)
+	if err != nil {
+		return 0, groveerr.WrapError(err,
 			errCodeSyncPod,
 			component.OperationSync,
 			fmt.Sprintf("error getting available indices for Pods in PodClique %v", client.ObjectKeyFromObject(pclq)),

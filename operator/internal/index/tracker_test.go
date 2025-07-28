@@ -14,64 +14,56 @@
 // limitations under the License.
 // */
 
-package indexer
+package index
 
 import (
-	"strconv"
 	"testing"
 
-	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // ==================== GetNextAvailableIndices Tests ====================
 
 func TestGetNextAvailableIndices_EmptyPods(t *testing.T) {
-	logger := createTestLogger()
+	indices, err := GetNextAvailableIndices([]*corev1.Pod{}, 3)
 
-	indices := GetNextAvailableIndices([]*corev1.Pod{}, 3, logger)
-
+	assert.NoError(t, err)
 	assert.Equal(t, []int{0, 1, 2}, indices)
+	assert.Len(t, indices, 3)
 }
 
 func TestGetNextAvailableIndices_WithExistingPods(t *testing.T) {
-	logger := createTestLogger()
-
 	pods := []*corev1.Pod{
 		createTestPod("pod-a", "test-clique-0"),
 		createTestPod("pod-b", "test-clique-2"),
 		createTestPod("pod-c", "test-clique-4"),
 	}
 
-	indices := GetNextAvailableIndices(pods, 3, logger)
+	indices, err := GetNextAvailableIndices(pods, 3)
 
+	assert.NoError(t, err)
 	// Should fill holes: 1, 3, 5
 	assert.Equal(t, []int{1, 3, 5}, indices)
 }
 
 func TestGetNextAvailableIndices_Sequential(t *testing.T) {
-	logger := createTestLogger()
-
 	pods := []*corev1.Pod{
 		createTestPod("pod-a", "test-clique-0"),
 		createTestPod("pod-b", "test-clique-1"),
 		createTestPod("pod-c", "test-clique-2"),
 	}
 
-	indices := GetNextAvailableIndices(pods, 2, logger)
+	indices, err := GetNextAvailableIndices(pods, 2)
 
+	assert.NoError(t, err)
 	// Should continue sequence: 3, 4
 	assert.Equal(t, []int{3, 4}, indices)
 }
-
 func TestGetNextAvailableIndices_InvalidHostnames(t *testing.T) {
-	logger := createTestLogger()
-
 	pods := []*corev1.Pod{
 		createTestPod("pod-valid", "test-clique-0"),
 		createTestPod("pod-invalid1", "invalid-hostname"),
@@ -79,40 +71,23 @@ func TestGetNextAvailableIndices_InvalidHostnames(t *testing.T) {
 		createTestPod("pod-valid2", "test-clique-2"),
 	}
 
-	indices := GetNextAvailableIndices(pods, 3, logger)
+	indices, err := GetNextAvailableIndices(pods, 3)
 
-	// Should ignore invalid pods and fill holes: 1, 3, 4
-	assert.Equal(t, []int{1, 3, 4}, indices)
-}
-
-func TestGetNextAvailableIndices_NilPods(t *testing.T) {
-	logger := createTestLogger()
-
-	pods := []*corev1.Pod{
-		createTestPod("pod-valid1", "test-clique-0"),
-		nil,
-		createTestPod("pod-valid2", "test-clique-2"),
-		nil,
-	}
-
-	indices := GetNextAvailableIndices(pods, 2, logger)
-
-	// Should handle nil pods gracefully: 1, 3
-	assert.Equal(t, []int{1, 3}, indices)
+	// Should return error for invalid hostname
+	assert.Error(t, err)
+	assert.Nil(t, indices)
 }
 
 // ==================== extractUsedIndices Tests ====================
-
 func TestExtractUsedIndices_ValidPods(t *testing.T) {
-	logger := createTestLogger()
-
 	pods := []*corev1.Pod{
 		createTestPod("pod-a", "test-clique-0"),
 		createTestPod("pod-b", "test-clique-2"),
 		createTestPod("pod-c", "test-clique-4"),
 	}
 
-	usedIndices := extractUsedIndices(pods, logger)
+	usedIndices, err := extractUsedIndices(pods)
+	assert.NoError(t, err)
 
 	assert.Equal(t, 3, usedIndices.Len())
 	assert.True(t, usedIndices.Has(0))
@@ -123,25 +98,22 @@ func TestExtractUsedIndices_ValidPods(t *testing.T) {
 }
 
 func TestExtractUsedIndices_DuplicateIndices(t *testing.T) {
-	logger := createTestLogger()
-
 	pods := []*corev1.Pod{
 		createTestPod("pod-first", "test-clique-1"),
 		createTestPod("pod-second", "test-clique-1"), // Duplicate index
 		createTestPod("pod-third", "test-clique-2"),
 	}
 
-	usedIndices := extractUsedIndices(pods, logger)
+	usedIndices, err := extractUsedIndices(pods)
 
-	// Should only count each index once
-	assert.Equal(t, 2, usedIndices.Len())
+	// Should return error for duplicate index
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate index")
+	assert.Equal(t, 1, usedIndices.Len()) // Contains first valid index before error
 	assert.True(t, usedIndices.Has(1))
-	assert.True(t, usedIndices.Has(2))
 }
 
 func TestExtractUsedIndices_InvalidIndices(t *testing.T) {
-	logger := createTestLogger()
-
 	pods := []*corev1.Pod{
 		createTestPod("pod-valid", "test-clique-1"),
 		createTestPod("pod-empty", ""),
@@ -149,37 +121,16 @@ func TestExtractUsedIndices_InvalidIndices(t *testing.T) {
 		createTestPod("pod-non-numeric", "test-clique-abc"),
 	}
 
-	usedIndices := extractUsedIndices(pods, logger)
+	usedIndices, err := extractUsedIndices(pods)
 
-	// Should only include valid indices
-	assert.Equal(t, 1, usedIndices.Len())
+	// Should return error for invalid hostname
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to extract index from hostname")
+	assert.Equal(t, 1, usedIndices.Len()) // Contains first valid index before error
 	assert.True(t, usedIndices.Has(1))
 }
 
-// ==================== isValidIndex Tests ====================
-
-func TestIsValidIndex(t *testing.T) {
-	tests := []struct {
-		index    int
-		expected bool
-	}{
-		{0, true},
-		{1, true},
-		{100, true},
-		{-1, false},
-		{-10, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(strconv.Itoa(tt.index), func(t *testing.T) {
-			result := isValidIndex(tt.index)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 // ==================== findAvailableIndices Tests ====================
-
 func TestFindAvailableIndices_EmptyUsed(t *testing.T) {
 	usedIndices := sets.New[int]()
 
@@ -217,7 +168,6 @@ func TestFindAvailableIndices_ZeroCount(t *testing.T) {
 }
 
 // ==================== extractIndexFromHostname Tests ====================
-
 func TestExtractIndexFromHostname_Valid(t *testing.T) {
 	tests := []struct {
 		hostname string
@@ -329,14 +279,13 @@ func TestExtractIndexFromHostname_DirectNegativeValidation(t *testing.T) {
 
 	for _, tc := range validCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			result := isValidIndex(tc.index)
+			result := tc.index >= 0
 			assert.Equal(t, tc.isValid, result)
 		})
 	}
 }
 
 // ==================== Test Utilities ====================
-
 func createTestPod(name, hostname string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -346,8 +295,4 @@ func createTestPod(name, hostname string) *corev1.Pod {
 			Hostname: hostname,
 		},
 	}
-}
-
-func createTestLogger() logr.Logger {
-	return log.Log.WithName("test")
 }
