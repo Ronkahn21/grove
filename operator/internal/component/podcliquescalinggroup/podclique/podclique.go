@@ -441,12 +441,12 @@ func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique
 			},
 		},
 	}
-	podTemplate := &pclq.Spec.PodSpec
-	for i := range podTemplate.Containers {
+	pcqlObjPodSpec := &pclq.Spec.PodSpec
+	for i := range pcqlObjPodSpec.Containers {
 		// prevent duplicate environment variables, when the updating podclique
 		// is being created by the PodCliqueScalingGroup controller, as the
 		// environment variables are already defined in the PodCliqueTemplateSpec.
-		podTemplate.Containers[i].Env = utils.MergeEnvVars(podTemplate.Containers[i].Env, pcsgEnvVars)
+		pcqlObjPodSpec.Containers[i].Env = utils.MergeEnvVars(pcqlObjPodSpec.Containers[i].Env, pcsgEnvVars)
 	}
 }
 
