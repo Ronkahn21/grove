@@ -83,6 +83,12 @@ const (
 	EnvVarHeadlessService = "GROVE_HEADLESS_SERVICE"
 	// EnvVarPodIndex is the environment variable name for pod index within PodClique
 	EnvVarPodIndex = "GROVE_PCLQ_POD_INDEX"
+	// EnvVarPCSGName is the environment variable name for PodCliqueScalingGroup name
+	EnvVarPCSGName = "GROVE_PCSG_NAME"
+	// EnvVarPCSGIndex is the environment variable name for PodCliqueScalingGroup replica index
+	EnvVarPCSGIndex = "GROVE_PCSG_INDEX"
+	// EnvVarPCSGTemplateNumPods is the environment variable name for total number of pods in PCSG template
+	EnvVarPCSGTemplateNumPods = "GROVE_PCSG_TEMPLATE_NUM_PODS"
 )
 
 // Constants for Condition Types

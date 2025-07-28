@@ -53,12 +53,6 @@ const (
 	errCodeCreatePodClique       grovecorev1alpha1.ErrorCode = "ERR_CREATE_PODCLIQUE"
 )
 
-const (
-	envVarGrovePCSGName                = "GROVE_PCSG_NAME"
-	envVarGrovePCSGIndex               = "GROVE_PCSG_INDEX"
-	evnVarGrovePCSGReplicaTotalPodSize = "GROVE_PCSG_TEMPLATE_PODS_PER_REPLICA"
-)
-
 type _resource struct {
 	client        client.Client
 	scheme        *runtime.Scheme
@@ -344,8 +338,8 @@ func (r _resource) Delete(ctx context.Context, logger logr.Logger, pcsgObjectMet
 	return nil
 }
 
-func (r _resource) getPCSGroupReplicaTotalPodSize(pgs *grovecorev1alpha1.PodGangSet, pcsg *grovecorev1alpha1.PodCliqueScalingGroup) int {
-	var pcsgReplicaTotalPodSize int
+func (r _resource) getPCSGTemplateNumPods(pgs *grovecorev1alpha1.PodGangSet, pcsg *grovecorev1alpha1.PodCliqueScalingGroup) int {
+	var pcsgTemplateNumPods int
 	pcMap := make(map[string]*grovecorev1alpha1.PodCliqueTemplateSpec, len(pgs.Spec.Template.Cliques))
 	for _, pclqTemplateSpec := range pgs.Spec.Template.Cliques {
 		pcMap[pclqTemplateSpec.Name] = pclqTemplateSpec
@@ -355,9 +349,9 @@ func (r _resource) getPCSGroupReplicaTotalPodSize(pgs *grovecorev1alpha1.PodGang
 		if !ok {
 			continue
 		}
-		pcsgReplicaTotalPodSize += int(pclqTemplateSpec.Spec.Replicas)
+		pcsgTemplateNumPods += int(pclqTemplateSpec.Spec.Replicas)
 	}
-	return pcsgReplicaTotalPodSize
+	return pcsgTemplateNumPods
 }
 
 func (r _resource) doCreate(ctx context.Context, logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, pcsg *grovecorev1alpha1.PodCliqueScalingGroup, pcsgReplicaIndex int, pclqObjectKey client.ObjectKey) error {
@@ -414,8 +408,8 @@ func (r _resource) buildResource(logger logr.Logger, pgs *grovecorev1alpha1.PodG
 	// set PodCliqueSpec
 	// ------------------------------------
 	pclq.Spec = pclqTemplateSpec.Spec
-	pcsgReplicasTotalPodSize := r.getPCSGroupReplicaTotalPodSize(pgs, pcsg)
-	r.addPCSGEnvironmentVariables(pclq, pcsgReplicasTotalPodSize)
+	pcsgTemplateNumPods := r.getPCSGTemplateNumPods(pgs, pcsg)
+	r.addPCSGEnvironmentVariables(pclq, pcsgTemplateNumPods)
 	dependentPclqNames, err := identifyFullyQualifiedStartupDependencyNames(pgs, pclq, pgsReplica, foundAtIndex)
 	if err != nil {
 		return err
@@ -427,7 +421,7 @@ func (r _resource) buildResource(logger logr.Logger, pgs *grovecorev1alpha1.PodG
 func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique, pcsgTotalPCReplicaSize int) {
 	pcsgEnvVars := []corev1.EnvVar{
 		{
-			Name: envVarGrovePCSGName,
+			Name: grovecorev1alpha1.EnvVarPCSGName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroup),
@@ -435,11 +429,11 @@ func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique
 			},
 		},
 		{
-			Name:  evnVarGrovePCSGReplicaTotalPodSize,
+			Name:  grovecorev1alpha1.EnvVarPCSGTemplateNumPods,
 			Value: strconv.Itoa(pcsgTotalPCReplicaSize),
 		},
 		{
-			Name: envVarGrovePCSGIndex,
+			Name: grovecorev1alpha1.EnvVarPCSGIndex,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: fmt.Sprintf("metadata.labels['%s']", grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex),
