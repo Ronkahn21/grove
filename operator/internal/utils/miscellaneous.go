@@ -47,7 +47,9 @@ func MergeEnvVars(existing []corev1.EnvVar, newEnvVars []corev1.EnvVar) []corev1
 			result = append(result, envVar) // Keep existing
 		}
 	}
-
+	if len(newEnvMap) == 0 {
+		return result // If no new environment variables left, return early
+	}
 	// Add any remaining new environment variables that weren't replacements
 	// Iterate through original slice to preserve order
 	for _, envVar := range newEnvVars {
