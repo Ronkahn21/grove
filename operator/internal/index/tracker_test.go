@@ -63,6 +63,7 @@ func TestGetNextAvailableIndices_Sequential(t *testing.T) {
 	// Should continue sequence: 3, 4
 	assert.Equal(t, []int{3, 4}, indices)
 }
+
 func TestGetNextAvailableIndices_InvalidHostnames(t *testing.T) {
 	pods := []*corev1.Pod{
 		createTestPod("pod-valid", "test-clique-0"),
