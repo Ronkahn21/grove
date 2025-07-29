@@ -18,9 +18,27 @@ package utils
 
 import (
 	"strings"
+
+	"k8s.io/api/core/v1"
 )
 
 // IsEmptyStringType returns true if value (which is a string or has an underline type string) is empty or contains only whitespace characters.
 func IsEmptyStringType[T ~string](val T) bool {
 	return len(strings.TrimSpace(string(val))) == 0
+}
+
+// AddEnvToAllInitContainer adds the provided environment variables to all
+// init-containers in the given PodSpec.
+func AddEnvToAllInitContainer(podSpec *v1.PodSpec, envVars []v1.EnvVar) {
+	for i := range podSpec.InitContainers {
+		podSpec.InitContainers[i].Env = append(podSpec.InitContainers[i].Env, envVars...)
+	}
+}
+
+// AddEnvToAllContainers adds the provided environment variables to all
+// containers in the given PodSpec.
+func AddEnvToAllContainers(podSpec *v1.PodSpec, envVars []v1.EnvVar) {
+	for i := range podSpec.Containers {
+		podSpec.Containers[i].Env = append(podSpec.Containers[i].Env, envVars...)
+	}
 }

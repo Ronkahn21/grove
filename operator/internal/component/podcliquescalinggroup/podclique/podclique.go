@@ -442,20 +442,8 @@ func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique
 		},
 	}
 	pclqObjPodSpec := &pclq.Spec.PodSpec
-	addEnvToAllContainers(pclqObjPodSpec, pcsgEnvVars)
-	addEnvToAllInitContainer(pclqObjPodSpec, pcsgEnvVars)
-}
-
-func addEnvToAllInitContainer(pclqObjPodSpec *corev1.PodSpec, pcsgEnvVars []corev1.EnvVar) {
-	for i := range pclqObjPodSpec.InitContainers {
-		pclqObjPodSpec.InitContainers[i].Env = append(pclqObjPodSpec.InitContainers[i].Env, pcsgEnvVars...)
-	}
-}
-
-func addEnvToAllContainers(pclqObjPodSpec *corev1.PodSpec, pcsgEnvVars []corev1.EnvVar) {
-	for i := range pclqObjPodSpec.Containers {
-		pclqObjPodSpec.Containers[i].Env = append(pclqObjPodSpec.Containers[i].Env, pcsgEnvVars...)
-	}
+	utils.AddEnvToAllContainers(pclqObjPodSpec, pcsgEnvVars)
+	utils.AddEnvToAllInitContainer(pclqObjPodSpec, pcsgEnvVars)
 }
 
 func getExpectedPodCliqueFQNs(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) []string {

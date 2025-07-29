@@ -224,10 +224,8 @@ func addEnvironmentVariables(pod *corev1.Pod, pclq *grovecorev1alpha1.PodClique,
 		},
 	}
 
-	// Add Grove environment variables to all containers in the pod
-	for i := range pod.Spec.Containers {
-		pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, groveEnvVars...)
-	}
+	utils.AddEnvToAllContainers(&pod.Spec, groveEnvVars)
+	utils.AddEnvToAllInitContainer(&pod.Spec, groveEnvVars)
 }
 
 // configurePodHostname sets the pod hostname and subdomain for service discovery
