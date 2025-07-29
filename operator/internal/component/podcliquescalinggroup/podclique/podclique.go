@@ -418,7 +418,7 @@ func (r _resource) buildResource(logger logr.Logger, pgs *grovecorev1alpha1.PodG
 	return nil
 }
 
-func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique, pcsgTotalPCReplicaSize int) {
+func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique, pcsgTemplateNumPods int) {
 	pcsgEnvVars := []corev1.EnvVar{
 		{
 			Name: grovecorev1alpha1.EnvVarPCSGName,
@@ -430,7 +430,7 @@ func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique
 		},
 		{
 			Name:  grovecorev1alpha1.EnvVarPCSGTemplateNumPods,
-			Value: strconv.Itoa(pcsgTotalPCReplicaSize),
+			Value: strconv.Itoa(pcsgTemplateNumPods),
 		},
 		{
 			Name: grovecorev1alpha1.EnvVarPCSGIndex,
@@ -441,12 +441,20 @@ func (r _resource) addPCSGEnvironmentVariables(pclq *grovecorev1alpha1.PodClique
 			},
 		},
 	}
-	pcqlObjPodSpec := &pclq.Spec.PodSpec
-	for i := range pcqlObjPodSpec.Containers {
-		// prevent duplicate environment variables, when the updating podclique
-		// is being created by the PodCliqueScalingGroup controller, as the
-		// environment variables are already defined in the PodCliqueTemplateSpec.
-		pcqlObjPodSpec.Containers[i].Env = utils.MergeEnvVars(pcqlObjPodSpec.Containers[i].Env, pcsgEnvVars)
+	pclqObjPodSpec := &pclq.Spec.PodSpec
+	addEnvToAllContainers(pclqObjPodSpec, pcsgEnvVars)
+	addEnvToAllInitContainer(pclqObjPodSpec, pcsgEnvVars)
+}
+
+func addEnvToAllInitContainer(pclqObjPodSpec *corev1.PodSpec, pcsgEnvVars []corev1.EnvVar) {
+	for i := range pclqObjPodSpec.InitContainers {
+		pclqObjPodSpec.InitContainers[i].Env = append(pclqObjPodSpec.InitContainers[i].Env, pcsgEnvVars...)
+	}
+}
+
+func addEnvToAllContainers(pclqObjPodSpec *corev1.PodSpec, pcsgEnvVars []corev1.EnvVar) {
+	for i := range pclqObjPodSpec.Containers {
+		pclqObjPodSpec.Containers[i].Env = append(pclqObjPodSpec.Containers[i].Env, pcsgEnvVars...)
 	}
 }
 
