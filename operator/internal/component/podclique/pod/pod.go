@@ -149,10 +149,9 @@ func (r _resource) buildResource(pclq *grovecorev1alpha1.PodClique, podGangName 
 		)
 	}
 	pod.Spec = *pclq.Spec.PodSpec.DeepCopy()
-
 	pod.Spec.SchedulingGates = []corev1.PodSchedulingGate{{Name: podGangSchedulingGate}}
-	addEnvironmentVariables(pod, pclq, pgsName, pgsReplicaIndex, podIndex)
 
+	addEnvironmentVariables(pod, pclq, pgsName, pgsReplicaIndex, podIndex)
 	// Configure hostname and subdomain for service discovery
 	configurePodHostname(pod, pclq.Name, podIndex, pgsName, pgsReplicaIndex)
 
@@ -197,7 +196,7 @@ func getLabels(pclqObjectMeta metav1.ObjectMeta, pgsName, podGangName string, pg
 		labels)
 }
 
-// addEnvironmentVariables adds Grove-specific environment variables
+// addEnvironmentVariables adds Grove-specific environment variables to all containers and init-containers.
 func addEnvironmentVariables(pod *corev1.Pod, pclq *grovecorev1alpha1.PodClique, pgsName string, pgsReplicaIndex, podIndex int) {
 	groveEnvVars := []corev1.EnvVar{
 		{
@@ -223,9 +222,8 @@ func addEnvironmentVariables(pod *corev1.Pod, pclq *grovecorev1alpha1.PodClique,
 			Value: strconv.Itoa(podIndex),
 		},
 	}
-
-	utils.AddEnvToAllContainers(&pod.Spec, groveEnvVars)
-	utils.AddEnvToAllInitContainer(&pod.Spec, groveEnvVars)
+	componentutils.AddEnvVarsToContainers(pod.Spec.Containers, groveEnvVars)
+	componentutils.AddEnvVarsToContainers(pod.Spec.InitContainers, groveEnvVars)
 }
 
 // configurePodHostname sets the pod hostname and subdomain for service discovery

@@ -26,10 +26,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// ==================== GetNextAvailableIndices Tests ====================
+// ==================== GetAvailableIndices Tests ====================
 
 func TestGetNextAvailableIndices_EmptyPods(t *testing.T) {
-	indices, err := GetNextAvailableIndices([]*corev1.Pod{}, 3)
+	indices, err := GetAvailableIndices([]*corev1.Pod{}, 3)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []int{0, 1, 2}, indices)
@@ -43,7 +43,7 @@ func TestGetNextAvailableIndices_WithExistingPods(t *testing.T) {
 		createTestPod("pod-c", "test-clique-4"),
 	}
 
-	indices, err := GetNextAvailableIndices(pods, 3)
+	indices, err := GetAvailableIndices(pods, 3)
 
 	assert.NoError(t, err)
 	// Should fill holes: 1, 3, 5
@@ -57,7 +57,7 @@ func TestGetNextAvailableIndices_Sequential(t *testing.T) {
 		createTestPod("pod-c", "test-clique-2"),
 	}
 
-	indices, err := GetNextAvailableIndices(pods, 2)
+	indices, err := GetAvailableIndices(pods, 2)
 
 	assert.NoError(t, err)
 	// Should continue sequence: 3, 4
@@ -72,7 +72,7 @@ func TestGetNextAvailableIndices_InvalidHostnames(t *testing.T) {
 		createTestPod("pod-valid2", "test-clique-2"),
 	}
 
-	indices, err := GetNextAvailableIndices(pods, 3)
+	indices, err := GetAvailableIndices(pods, 3)
 
 	// Should return error for invalid hostname
 	assert.Error(t, err)

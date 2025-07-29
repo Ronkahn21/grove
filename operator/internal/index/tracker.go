@@ -26,10 +26,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// GetNextAvailableIndices returns the next N available indices for pods.
-// Extracts indices from existing pod hostnames and returns count available indices,
+// GetAvailableIndices returns the `requiredIndicesCount` available indices for pods.
+// Extracts indices from existing pod hostnames and returns the available indices,
 // filling holes from lowest to highest (starting from 0).
-func GetNextAvailableIndices(existingPods []*corev1.Pod, requiredIndicesCount int) ([]int, error) {
+func GetAvailableIndices(existingPods []*corev1.Pod, requiredIndicesCount int) ([]int, error) {
 	usedIndices, err := extractUsedIndices(existingPods)
 	if err != nil {
 		return nil, err
@@ -59,18 +59,15 @@ func extractUsedIndices(existingPods []*corev1.Pod) (sets.Set[int], error) {
 
 // findAvailableIndices finds the next count available indices starting from 0.
 func findAvailableIndices(usedIndices *sets.Set[int], requiredIndicesCount int) []int {
-	availableIndices := make([]int, requiredIndicesCount)
+	availableIndices := make([]int, 0, requiredIndicesCount)
 	currentIndex := 0
-	foundIndexCounter := 0
-
-	for foundIndexCounter < requiredIndicesCount {
+	for requiredIndicesCount > 0 {
 		if !usedIndices.Has(currentIndex) {
-			availableIndices[foundIndexCounter] = currentIndex
-			foundIndexCounter++
+			availableIndices = append(availableIndices, currentIndex)
+			requiredIndicesCount--
 		}
 		currentIndex++
 	}
-
 	return availableIndices
 }
 

@@ -26,88 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Helper function to assert expected environment variables are present
-func assertExpectedEnvVars(t *testing.T, container corev1.Container, expectedEnvVars []string) {
-	envVarNames := make(map[string]bool)
-	for _, env := range container.Env {
-		envVarNames[env.Name] = true
-	}
-
-	for _, expectedEnv := range expectedEnvVars {
-		assert.True(t, envVarNames[expectedEnv], "expected environment variable %s not found in container %s", expectedEnv, container.Name)
-	}
-}
-
-// Helper function to assert Grove environment variables have direct values
-func assertGroveEnvVarsDirectValues(t *testing.T, container corev1.Container, groveEnvVars []string) {
-	// Create a set of Grove env vars for quick lookup
-	groveEnvVarSet := make(map[string]bool)
-	for _, envVar := range groveEnvVars {
-		groveEnvVarSet[envVar] = true
-	}
-
-	for _, env := range container.Env {
-		// Only validate Grove environment variables
-		if groveEnvVarSet[env.Name] {
-			assert.NotEmpty(t, env.Value, "Grove environment variable %s should have a direct value", env.Name)
-			assert.Nil(t, env.ValueFrom, "Grove environment variable %s should not use ValueFrom (Downward API)", env.Name)
-		}
-	}
-}
-
-// Helper function to assert replaced environment variables use correct Downward API
-func assertReplacedEnvVars(t *testing.T, container corev1.Container, shouldReplace map[string]string) {
-	if shouldReplace == nil {
-		return
-	}
-
-	envVarNames := make(map[string]corev1.EnvVar)
-	for _, env := range container.Env {
-		envVarNames[env.Name] = env
-	}
-
-	for envName, expectedValue := range shouldReplace {
-		envVar, found := envVarNames[envName]
-		assert.True(t, found, "environment variable %s should exist", envName)
-		if found {
-			assert.Equal(t, expectedValue, envVar.Value,
-				"environment variable %s has wrong value", envName)
-		}
-	}
-}
-
-// Helper function to assert preserved environment variables maintain their values
-func assertPreservedEnvVars(t *testing.T, container corev1.Container, shouldPreserve []string) {
-	if shouldPreserve == nil {
-		return
-	}
-
-	envVarNames := make(map[string]corev1.EnvVar)
-	for _, env := range container.Env {
-		envVarNames[env.Name] = env
-	}
-
-	for _, preserveEnv := range shouldPreserve {
-		envVar, found := envVarNames[preserveEnv]
-		assert.True(t, found, "expected preserved environment variable %s not found in container %s", preserveEnv, container.Name)
-		if found {
-			assert.NotEmpty(t, envVar.Value, "preserved environment variable %s should have its original value", preserveEnv)
-		}
-	}
-}
-
-// Helper function to assert no duplicate environment variables
-func assertNoDuplicateEnvVars(t *testing.T, container corev1.Container) {
-	envVarCounts := make(map[string]int)
-	for _, env := range container.Env {
-		envVarCounts[env.Name]++
-	}
-	for envName, count := range envVarCounts {
-		assert.Equal(t, 1, count, "environment variable %s appears %d times (should be 1)", envName, count)
-	}
-}
-
-func TestAddGroveEnvironmentVariables(t *testing.T) {
+func TestAddEnvironmentVariables(t *testing.T) {
 	tests := []struct {
 		name              string
 		pclq              *grovecorev1alpha1.PodClique
@@ -425,4 +344,87 @@ func TestAddGroveEnvironmentVariables_MultipleContainers(t *testing.T) {
 		envVarNames[env.Name] = true
 	}
 	assert.True(t, envVarNames["EXISTING_VAR"], "existing environment variable should be preserved")
+}
+
+// Helper functions
+// -------------------------------------------------------------------------------------------
+
+// assertExpectedEnvVars asserts that the expected environment variables are present.
+func assertExpectedEnvVars(t *testing.T, container corev1.Container, expectedEnvVars []string) {
+	envVarNames := make(map[string]bool)
+	for _, env := range container.Env {
+		envVarNames[env.Name] = true
+	}
+	for _, expectedEnv := range expectedEnvVars {
+		assert.True(t, envVarNames[expectedEnv], "expected environment variable %s not found in container %s", expectedEnv, container.Name)
+	}
+}
+
+// assertGroveEnvVarsDirectValues asserts Grove environment variables have direct values.
+func assertGroveEnvVarsDirectValues(t *testing.T, container corev1.Container, groveEnvVars []string) {
+	// Create a set of Grove env vars for quick lookup
+	groveEnvVarSet := make(map[string]bool)
+	for _, envVar := range groveEnvVars {
+		groveEnvVarSet[envVar] = true
+	}
+
+	for _, env := range container.Env {
+		// Only validate Grove environment variables
+		if groveEnvVarSet[env.Name] {
+			assert.NotEmpty(t, env.Value, "Grove environment variable %s should have a direct value", env.Name)
+			assert.Nil(t, env.ValueFrom, "Grove environment variable %s should not use ValueFrom (Downward API)", env.Name)
+		}
+	}
+}
+
+// Helper function to assert replaced environment variables use correct Downward API
+func assertReplacedEnvVars(t *testing.T, container corev1.Container, shouldReplace map[string]string) {
+	if shouldReplace == nil {
+		return
+	}
+
+	envVarNames := make(map[string]corev1.EnvVar)
+	for _, env := range container.Env {
+		envVarNames[env.Name] = env
+	}
+
+	for envName, expectedValue := range shouldReplace {
+		envVar, found := envVarNames[envName]
+		assert.True(t, found, "environment variable %s should exist", envName)
+		if found {
+			assert.Equal(t, expectedValue, envVar.Value,
+				"environment variable %s has wrong value", envName)
+		}
+	}
+}
+
+// Helper function to assert preserved environment variables maintain their values
+func assertPreservedEnvVars(t *testing.T, container corev1.Container, shouldPreserve []string) {
+	if shouldPreserve == nil {
+		return
+	}
+
+	envVarNames := make(map[string]corev1.EnvVar)
+	for _, env := range container.Env {
+		envVarNames[env.Name] = env
+	}
+
+	for _, preserveEnv := range shouldPreserve {
+		envVar, found := envVarNames[preserveEnv]
+		assert.True(t, found, "expected preserved environment variable %s not found in container %s", preserveEnv, container.Name)
+		if found {
+			assert.NotEmpty(t, envVar.Value, "preserved environment variable %s should have its original value", preserveEnv)
+		}
+	}
+}
+
+// Helper function to assert no duplicate environment variables
+func assertNoDuplicateEnvVars(t *testing.T, container corev1.Container) {
+	envVarCounts := make(map[string]int)
+	for _, env := range container.Env {
+		envVarCounts[env.Name]++
+	}
+	for envName, count := range envVarCounts {
+		assert.Equal(t, 1, count, "environment variable %s appears %d times (should be 1)", envName, count)
+	}
 }
