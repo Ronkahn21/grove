@@ -186,7 +186,7 @@ func (r *Reconciler) getPodCliquesPerPCSGReplica(ctx context.Context, pgsName st
 	availableReplicas := int32(0)
 
 	for pcsgReplicaIndex, pclqs := range pcsgReplicaPCLQs {
-		pcsgReplicaAvailable := checkReplicaAvailability(logger, pcsgReplicaIndex, pclqs)
+		pcsgReplicaAvailable := checkReplicaAvailability(logger, pcsgReplicaIndex, pclqs, pcsg)
 		// A PCSG replica is available when all constituent PodCliques have MinAvailableBreached = False
 		if pcsgReplicaAvailable {
 			availableReplicas++
@@ -197,7 +197,12 @@ func (r *Reconciler) getPodCliquesPerPCSGReplica(ctx context.Context, pgsName st
 	return availableReplicas, nil
 }
 
-func checkReplicaAvailability(logger logr.Logger, pcsgReplicaIndex string, pclqs []grovecorev1alpha1.PodClique) bool {
+func checkReplicaAvailability(logger logr.Logger, pcsgReplicaIndex string, pclqs []grovecorev1alpha1.PodClique, pcsg *grovecorev1alpha1.PodCliqueScalingGroup) bool {
+	if len(pclqs) != len(pcsg.Spec.CliqueNames) {
+		logger.Info("PCSG replica is not available, number of PodCliques does not match the number of expected cliques",
+			"pcsgReplicaIndex", pcsgReplicaIndex, "expectedCliqueCount", len(pcsg.Spec.CliqueNames), "actualCliqueCount", len(pclqs))
+		return false
+	}
 	for _, pclq := range pclqs {
 		logger.Info("MinAvailable condition status for PCLQ", "pclq", client.ObjectKeyFromObject(&pclq), "status", k8sutils.GetConditionStatus(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached))
 		if k8sutils.IsResourceTerminating(pclq.ObjectMeta) {
