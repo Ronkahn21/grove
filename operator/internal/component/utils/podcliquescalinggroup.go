@@ -117,3 +117,21 @@ func GenerateDependencyNamesForBasePodGang(pgs *grovecorev1alpha1.PodGangSet, pg
 	}
 	return parentPCLQNames
 }
+
+// GroupPCSGsByPGSReplicaIndex filters PCSGs that have a PodGangSetReplicaIndex label and groups them by the PGS replica.
+func GroupPCSGsByPGSReplicaIndex(pcsgs []grovecorev1alpha1.PodCliqueScalingGroup) map[string][]grovecorev1alpha1.PodCliqueScalingGroup {
+	return groupPCSGsByLabel(pcsgs, grovecorev1alpha1.LabelPodGangSetReplicaIndex)
+}
+
+// groupPCSGsByLabel groups PCSGs by the specified label key.
+func groupPCSGsByLabel(pcsgs []grovecorev1alpha1.PodCliqueScalingGroup, labelKey string) map[string][]grovecorev1alpha1.PodCliqueScalingGroup {
+	pcsgsByLabel := make(map[string][]grovecorev1alpha1.PodCliqueScalingGroup, len(pcsgs))
+	for _, pcsg := range pcsgs {
+		labelVal, ok := pcsg.GetLabels()[labelKey]
+		if !ok {
+			continue
+		}
+		pcsgsByLabel[labelVal] = append(pcsgsByLabel[labelVal], pcsg)
+	}
+	return pcsgsByLabel
+}
