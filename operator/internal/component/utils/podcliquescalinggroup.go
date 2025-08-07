@@ -55,6 +55,7 @@ func GetPCSGsForPGSReplicaIndex(ctx context.Context, cl client.Client, pgsObjKey
 	}
 	return pcsgList.Items, nil
 }
+
 func getPcsgForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey, extraLabels map[string]string) (*grovecorev1alpha1.PodCliqueScalingGroupList, error) {
 	pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
 	if err := cl.List(ctx,

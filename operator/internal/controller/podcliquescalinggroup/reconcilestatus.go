@@ -40,12 +40,11 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pc
 		return ctrlcommon.ReconcileWithErrors("failed to get owner PodGangSet", err)
 	}
 
-	pclqsPerPCSGReplica, err := r.getPodCliquesPerPCSGReplica(ctx, pgs.Name, client.ObjectKeyFromObject(pcsg))
-	if err != nil {
-		return ctrlcommon.ReconcileWithErrors(fmt.Sprintf("failed to list PodCliques for PodCliqueScalingGroup: %q", client.ObjectKeyFromObject(pcsg)), err)
-	}
-
 	if pcsg.Status.ObservedGeneration != nil {
+		pclqsPerPCSGReplica, err := r.getPodCliquesPerPCSGReplica(ctx, pgs.Name, client.ObjectKeyFromObject(pcsg))
+		if err != nil {
+			return ctrlcommon.ReconcileWithErrors(fmt.Sprintf("failed to list PodCliques for PodCliqueScalingGroup: %q", client.ObjectKeyFromObject(pcsg)), err)
+		}
 		mutateReplicas(logger, pcsg, pclqsPerPCSGReplica)
 		mutateMinAvailableBreachedCondition(pcsg)
 	}

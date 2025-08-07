@@ -24,16 +24,18 @@ import (
 	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	ctrlcommon "github.com/NVIDIA/grove/operator/internal/controller/common"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
-	"github.com/samber/lo"
 
 	"github.com/go-logr/logr"
+	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet) ctrlcommon.ReconcileStepResult {
+	if pgs.Status.ObservedGeneration == nil {
+		return ctrlcommon.ContinueReconcile()
+	}
 	// Set basic replica count
 	pgs.Status.Replicas = pgs.Spec.Replicas
-
 	// Calculate available replicas using PCSG-inspired approach
 	availableReplicas, err := r.computePGSAvailableReplicas(ctx, logger, pgs)
 	if err != nil {
@@ -43,7 +45,7 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pg
 	pgs.Status.AvailableReplicas = availableReplicas
 
 	// Update the PodGangSet status
-	if err := r.client.Status().Update(ctx, pgs); err != nil {
+	if err = r.client.Status().Update(ctx, pgs); err != nil {
 		logger.Error(err, "failed to update PodGangSet status")
 		return ctrlcommon.ReconcileWithErrors("failed to update PodGangSet status", err)
 	}
@@ -108,7 +110,6 @@ func (r *Reconciler) computeExpectedResourceCounts(pgs *grovecorev1alpha1.PodGan
 }
 
 func (r *Reconciler) checkPGSReplicaAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, replicaIndex int, replicaPCSGs []grovecorev1alpha1.PodCliqueScalingGroup, standalonePCLQs []grovecorev1alpha1.PodClique, expectedPCSGs int, expectedStandalonePCLQs int) bool {
-
 	if !r.isPGSReplicaPCLAsAvailable(logger, pgs, expectedStandalonePCLQs, replicaIndex, standalonePCLQs) {
 		return false
 	}
