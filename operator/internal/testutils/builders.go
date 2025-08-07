@@ -198,6 +198,12 @@ func (b *PCSGBuilder) WithMinAvailable(minAvailable int32) *PCSGBuilder {
 	return b
 }
 
+// WithCliqueNames sets the CliqueNames field for the PodCliqueScalingGroup.
+func (b *PCSGBuilder) WithCliqueNames(cliqueNames []string) *PCSGBuilder {
+	b.pcsg.Spec.CliqueNames = cliqueNames
+	return b
+}
+
 // WithLabels adds labels to the PodCliqueScalingGroup.
 func (b *PCSGBuilder) WithLabels(labels map[string]string) *PCSGBuilder {
 	if b.pcsg.Labels == nil {
