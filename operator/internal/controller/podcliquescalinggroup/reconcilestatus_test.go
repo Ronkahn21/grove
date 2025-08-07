@@ -17,6 +17,7 @@
 package podcliquescalinggroup
 
 import (
+	"context"
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
@@ -28,386 +29,511 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const (
-	testNamespace = "test-ns"
-	testPGSName   = "test-pgs"
-	testPCSGName  = "test-pcsg"
-)
-
-// Simple test helpers following KISS principles
-
-func buildTestPCSG(replicas int32, minAvailable *int32) *grovecorev1alpha1.PodCliqueScalingGroup {
-	builder := testutils.NewPCSGBuilder(testPCSGName, testNamespace, testPGSName, 0).
-		WithReplicas(replicas)
-
-	if minAvailable != nil {
-		builder = builder.WithMinAvailable(*minAvailable)
-	}
-
-	pcsg := builder.Build()
-	// Set CliqueNames directly since there's no builder method
-	pcsg.Spec.CliqueNames = []string{"frontend", "backend"}
-	return pcsg
+// Test helpers
+func buildHealthyClique(name string) grovecorev1alpha1.PodClique {
+	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+		WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build()
 }
 
-func buildHealthyCliques(count int) []grovecorev1alpha1.PodClique {
-	cliques := make([]grovecorev1alpha1.PodClique, count)
-	for i := 0; i < count; i++ {
-		cliques[i] = *testutils.NewPodCliqueBuilder("test-pgs-0-clique", testNamespace, testPGSName, i).
-			WithOptions(testutils.WithPCLQAvailable()).
-			Build()
-	}
-	return cliques
+func buildScheduledClique(name string) grovecorev1alpha1.PodClique {
+	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+		WithOptions(testutils.WithPCLQScheduledButBreached()).Build()
 }
 
-func buildBreachedCliques(count int) []grovecorev1alpha1.PodClique {
-	cliques := make([]grovecorev1alpha1.PodClique, count)
-	for i := 0; i < count; i++ {
-		cliques[i] = *testutils.NewPodCliqueBuilder("test-pgs-0-clique", testNamespace, testPGSName, i).
-			WithOptions(testutils.WithPCLQMinAvailableBreached()).
-			Build()
-	}
-	return cliques
+func buildFailedClique(name string) grovecorev1alpha1.PodClique {
+	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+		WithOptions(testutils.WithPCLQNotScheduled()).Build()
 }
 
-func buildTerminatingCliques(count int) []grovecorev1alpha1.PodClique {
-	cliques := make([]grovecorev1alpha1.PodClique, count)
-	for i := 0; i < count; i++ {
-		cliques[i] = *testutils.NewPodCliqueBuilder("test-pgs-0-clique", testNamespace, testPGSName, i).
-			WithOptions(testutils.WithPCLQTerminating()).
-			Build()
-	}
-	return cliques
+func buildTerminatingClique(name string) grovecorev1alpha1.PodClique {
+	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+		WithOptions(testutils.WithPCLQTerminating()).Build()
 }
 
-func assertCondition(t *testing.T, pcsg *grovecorev1alpha1.PodCliqueScalingGroup, expectedBreached bool) {
-	condition := findCondition(pcsg.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
-	require.NotNil(t, condition, "MinAvailableBreached condition should exist")
-
-	isBreached := condition.Status == metav1.ConditionTrue
-	assert.Equal(t, expectedBreached, isBreached, "MinAvailableBreached condition mismatch")
+func buildTestPCSG(replicas int32) *grovecorev1alpha1.PodCliqueScalingGroup {
+	return testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+		WithReplicas(replicas).
+		WithCliqueNames([]string{"frontend", "backend"}).Build()
 }
 
-func findCondition(conditions []metav1.Condition, conditionType string) *metav1.Condition {
-	for i := range conditions {
-		if conditions[i].Type == conditionType {
-			return &conditions[i]
+func assertCondition(t *testing.T, pcsg *grovecorev1alpha1.PodCliqueScalingGroup, expectBreached bool) {
+	var condition *metav1.Condition
+	for i := range pcsg.Status.Conditions {
+		if pcsg.Status.Conditions[i].Type == "MinAvailableBreached" {
+			condition = &pcsg.Status.Conditions[i]
+			break
 		}
 	}
-	return nil
+
+	require.NotNil(t, condition, "MinAvailableBreached condition should exist")
+	isBreached := condition.Status == metav1.ConditionTrue
+	assert.Equal(t, expectBreached, isBreached, "condition breach status mismatch")
 }
 
-// Unit tests for checkReplicaAvailability function
+// ============================================================================
+// Unit Tests
+// ============================================================================
 
-func TestCheckReplicaAvailability(t *testing.T) {
+func TestComputeReplicaStatus(t *testing.T) {
 	logger := testutils.SetupTestLogger()
-	pcsg := buildTestPCSG(1, nil)
 
 	tests := []struct {
-		name     string
-		cliques  []grovecorev1alpha1.PodClique
-		expected bool
+		name          string
+		expectedSize  int
+		cliques       []grovecorev1alpha1.PodClique
+		wantScheduled bool
+		wantAvailable bool
 	}{
 		{
-			name:     "healthy cliques",
-			cliques:  buildHealthyCliques(2),
-			expected: true,
+			name:          "healthy replica",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend")},
+			wantScheduled: true,
+			wantAvailable: true,
 		},
 		{
-			name:     "breached cliques",
-			cliques:  buildBreachedCliques(2),
-			expected: false,
+			name:          "incomplete replica",
+			expectedSize:  3,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend")},
+			wantScheduled: false,
+			wantAvailable: false,
 		},
 		{
-			name:     "terminating cliques",
-			cliques:  buildTerminatingCliques(2),
-			expected: false,
+			name:          "scheduling failed",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildFailedClique("backend")},
+			wantScheduled: false,
+			wantAvailable: false,
 		},
 		{
-			name:     "mixed healthy and breached",
-			cliques:  append(buildHealthyCliques(1), buildBreachedCliques(1)...),
-			expected: false,
+			name:          "scheduled but unavailable",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildScheduledClique("backend")},
+			wantScheduled: true,
+			wantAvailable: false,
 		},
 		{
-			name:     "wrong clique count - too few",
-			cliques:  buildHealthyCliques(1), // pcsg expects 2 cliques
-			expected: false,
+			name:          "terminating cliques ignored",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend"), buildTerminatingClique("old-backend")},
+			wantScheduled: true,
+			wantAvailable: true,
 		},
 		{
-			name:     "wrong clique count - too many",
-			cliques:  buildHealthyCliques(3), // pcsg expects 2 cliques
-			expected: false,
+			name:          "insufficient non-terminated",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildTerminatingClique("backend")},
+			wantScheduled: false,
+			wantAvailable: false,
 		},
 		{
-			name:     "empty cliques",
-			cliques:  []grovecorev1alpha1.PodClique{},
-			expected: false,
+			name:          "all terminated cliques",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildTerminatingClique("frontend"), buildTerminatingClique("backend")},
+			wantScheduled: false,
+			wantAvailable: false,
+		},
+		{
+			name:          "mixed terminated and healthy",
+			expectedSize:  3,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend"), buildHealthyClique("worker"), buildTerminatingClique("old-worker")},
+			wantScheduled: true,
+			wantAvailable: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := checkReplicaAvailability(logger, "replica-0", tt.cliques, pcsg)
-			assert.Equal(t, tt.expected, result)
+			scheduled, available := computeReplicaStatus(logger, tt.expectedSize, "0", tt.cliques)
+
+			assert.Equal(t, tt.wantScheduled, scheduled, "scheduled mismatch")
+			assert.Equal(t, tt.wantAvailable, available, "available mismatch")
 		})
 	}
 }
-
-// Unit tests for computeMinAvailableBreachedCondition function
 
 func TestComputeMinAvailableBreachedCondition(t *testing.T) {
-	reconciler := &Reconciler{}
-
 	tests := []struct {
-		name              string
-		availableReplicas int32
-		minAvailable      *int32
-		expectedBreached  bool
-		expectedMessage   string
+		name         string
+		replicas     int32
+		minAvailable *int32
+		scheduled    int32
+		available    int32
+		wantStatus   metav1.ConditionStatus
+		wantReason   string
 	}{
 		{
-			name:              "default minAvailable - sufficient",
-			availableReplicas: 1,
-			minAvailable:      nil,
-			expectedBreached:  false,
-			expectedMessage:   "Sufficient PodCliqueScalingGroup replicas, expected at least: 1, found: 1",
+			name:       "sufficient replicas",
+			replicas:   3,
+			scheduled:  3,
+			available:  3,
+			wantStatus: metav1.ConditionFalse,
+			wantReason: "SufficientAvailablePodCliqueScalingGroupReplicas",
 		},
 		{
-			name:              "default minAvailable - insufficient",
-			availableReplicas: 0,
-			minAvailable:      nil,
-			expectedBreached:  true,
-			expectedMessage:   "Insufficient PodCliqueScalingGroup replicas, expected at least: 1, found: 0",
+			name:         "custom minAvailable met",
+			replicas:     5,
+			minAvailable: ptr.To(int32(2)),
+			scheduled:    3,
+			available:    3,
+			wantStatus:   metav1.ConditionFalse,
+			wantReason:   "SufficientAvailablePodCliqueScalingGroupReplicas",
 		},
 		{
-			name:              "custom minAvailable - sufficient",
-			availableReplicas: 3,
-			minAvailable:      ptr.To(int32(2)),
-			expectedBreached:  false,
-			expectedMessage:   "Sufficient PodCliqueScalingGroup replicas, expected at least: 1, found: 3",
+			name:         "insufficient scheduled",
+			replicas:     3,
+			minAvailable: ptr.To(int32(2)),
+			scheduled:    1,
+			available:    1,
+			wantStatus:   metav1.ConditionFalse,
+			wantReason:   "InsufficientScheduledPodCliqueScalingGroupReplicas",
 		},
 		{
-			name:              "custom minAvailable - insufficient",
-			availableReplicas: 1,
-			minAvailable:      ptr.To(int32(3)),
-			expectedBreached:  true,
-			expectedMessage:   "Insufficient PodCliqueScalingGroup replicas, expected at least: 1, found: 1",
+			name:         "insufficient available",
+			replicas:     3,
+			minAvailable: ptr.To(int32(2)),
+			scheduled:    3,
+			available:    1,
+			wantStatus:   metav1.ConditionTrue,
+			wantReason:   "InsufficientAvailablePodCliqueScalingGroupReplicas",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pcsg := buildTestPCSG(3, tt.minAvailable)
+			pcsg := &grovecorev1alpha1.PodCliqueScalingGroup{
+				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
+					Replicas:     tt.replicas,
+					MinAvailable: tt.minAvailable,
+				},
+				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
+					ScheduledReplicas: tt.scheduled,
+					AvailableReplicas: tt.available,
+				},
+			}
 
-			condition := reconciler.computeMinAvailableBreachedCondition(tt.availableReplicas, pcsg)
+			condition := computeMinAvailableBreachedCondition(pcsg)
 
-			isBreached := condition.Status == metav1.ConditionTrue
-			assert.Equal(t, tt.expectedBreached, isBreached, "condition status mismatch")
-			assert.Equal(t, grovecorev1alpha1.ConditionTypeMinAvailableBreached, condition.Type)
-			assert.Contains(t, condition.Message, tt.expectedMessage)
+			assert.Equal(t, "MinAvailableBreached", condition.Type)
+			assert.Equal(t, tt.wantStatus, condition.Status)
+			assert.Equal(t, tt.wantReason, condition.Reason)
+		})
+	}
+}
 
-			if tt.expectedBreached {
-				assert.Equal(t, grovecorev1alpha1.ConditionReasonInsufficientReadyPCSGReplicas, condition.Reason)
-			} else {
-				assert.Equal(t, grovecorev1alpha1.ConditionReasonSufficientReadyPCSGReplicas, condition.Reason)
+func TestMutateReplicas(t *testing.T) {
+	logger := testutils.SetupTestLogger()
+
+	tests := []struct {
+		name           string
+		pcsg           *grovecorev1alpha1.PodCliqueScalingGroup
+		replicaCliques map[string][]grovecorev1alpha1.PodClique
+		wantScheduled  int32
+		wantAvailable  int32
+	}{
+		{
+			name: "healthy replica",
+			pcsg: buildTestPCSG(1),
+			replicaCliques: map[string][]grovecorev1alpha1.PodClique{
+				"0": {buildHealthyClique("frontend"), buildHealthyClique("backend")},
+			},
+			wantScheduled: 1,
+			wantAvailable: 1,
+		},
+		{
+			name: "mixed states",
+			pcsg: buildTestPCSG(3),
+			replicaCliques: map[string][]grovecorev1alpha1.PodClique{
+				"0": {buildHealthyClique("frontend-0"), buildHealthyClique("backend-0")},
+				"1": {buildScheduledClique("frontend-1"), buildScheduledClique("backend-1")},
+				"2": {buildFailedClique("frontend-2"), buildFailedClique("backend-2")},
+			},
+			wantScheduled: 2,
+			wantAvailable: 1,
+		},
+		{
+			name:           "no replicas",
+			pcsg:           buildTestPCSG(2),
+			replicaCliques: map[string][]grovecorev1alpha1.PodClique{},
+			wantScheduled:  0,
+			wantAvailable:  0,
+		},
+		{
+			name: "with terminating cliques",
+			pcsg: buildTestPCSG(2),
+			replicaCliques: map[string][]grovecorev1alpha1.PodClique{
+				"0": {buildHealthyClique("frontend-0"), buildHealthyClique("backend-0")},
+				"1": {buildHealthyClique("frontend-1"), buildTerminatingClique("backend-1")},
+			},
+			wantScheduled: 1, // only replica 0 has sufficient non-terminated cliques
+			wantAvailable: 1, // only replica 0 is available
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mutateReplicas(logger, tt.pcsg, tt.replicaCliques)
+
+			assert.Equal(t, tt.wantScheduled, tt.pcsg.Status.ScheduledReplicas)
+			assert.Equal(t, tt.wantAvailable, tt.pcsg.Status.AvailableReplicas)
+			assert.Equal(t, tt.pcsg.Spec.Replicas, tt.pcsg.Status.Replicas)
+		})
+	}
+}
+
+func TestMutateMinAvailableBreachedCondition(t *testing.T) {
+	tests := []struct {
+		name       string
+		pcsg       *grovecorev1alpha1.PodCliqueScalingGroup
+		wantStatus metav1.ConditionStatus
+	}{
+		{
+			name: "condition becomes breached",
+			pcsg: &grovecorev1alpha1.PodCliqueScalingGroup{
+				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
+					Replicas:     3,
+					MinAvailable: ptr.To(int32(2)),
+				},
+				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
+					ScheduledReplicas: 3,
+					AvailableReplicas: 1,
+				},
+			},
+			wantStatus: metav1.ConditionTrue,
+		},
+		{
+			name: "condition stays healthy",
+			pcsg: &grovecorev1alpha1.PodCliqueScalingGroup{
+				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
+					Replicas:     3,
+					MinAvailable: ptr.To(int32(2)),
+				},
+				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
+					ScheduledReplicas: 3,
+					AvailableReplicas: 3,
+				},
+			},
+			wantStatus: metav1.ConditionFalse,
+		},
+		{
+			name: "new condition added",
+			pcsg: &grovecorev1alpha1.PodCliqueScalingGroup{
+				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
+					Replicas:     2,
+					MinAvailable: ptr.To(int32(1)),
+				},
+				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
+					ScheduledReplicas: 2,
+					AvailableReplicas: 2,
+					Conditions:        []metav1.Condition{},
+				},
+			},
+			wantStatus: metav1.ConditionFalse,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mutateMinAvailableBreachedCondition(tt.pcsg)
+			assertCondition(t, tt.pcsg, tt.wantStatus == metav1.ConditionTrue)
+		})
+	}
+}
+
+func TestGetPodCliquesPerPCSGReplica(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name         string
+		objects      []client.Object
+		wantReplicas int
+	}{
+		{
+			name: "find expected cliques",
+			objects: []client.Object{
+				testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+					WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").Build(),
+				testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+					WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").Build(),
+				testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
+					WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").Build(),
+			},
+			wantReplicas: 2,
+		},
+		{
+			name:         "no cliques found",
+			objects:      []client.Object{},
+			wantReplicas: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := testutils.SetupFakeClient(tt.objects...)
+			reconciler := &Reconciler{client: fakeClient}
+			objKey := client.ObjectKey{Name: "test-pcsg", Namespace: "test-ns"}
+
+			result, err := reconciler.getPodCliquesPerPCSGReplica(ctx, "test-pgs", objKey)
+
+			require.NoError(t, err)
+			assert.Len(t, result, tt.wantReplicas)
+		})
+	}
+}
+
+// ============================================================================
+// Integration Tests
+// ============================================================================
+
+func TestReconcileStatus(t *testing.T) {
+	ctx := context.Background()
+	logger := testutils.SetupTestLogger()
+
+	tests := []struct {
+		name          string
+		setup         func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object)
+		wantAvailable int32
+		wantScheduled int32
+		wantBreached  bool
+	}{
+		{
+			name: "happy path",
+			setup: func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object) {
+				pcsg := testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+					WithReplicas(2).
+					WithCliqueNames([]string{"frontend", "backend"}).
+					WithOptions(testutils.WithPCSGObservedGeneration(1)).Build()
+				pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+				cliques := []client.Object{
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+				}
+				return pcsg, pgs, cliques
+			},
+			wantAvailable: 2,
+			wantScheduled: 2,
+			wantBreached:  false,
+		},
+		{
+			name: "mixed replica states",
+			setup: func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object) {
+				pcsg := testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+					WithReplicas(3).
+					WithCliqueNames([]string{"worker"}).
+					WithMinAvailable(2).
+					WithOptions(testutils.WithPCSGObservedGeneration(1)).Build()
+				pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+				cliques := []client.Object{
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledButBreached()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-2", "test-ns", "test-pgs", "test-pcsg", 0, 2).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQNotScheduled()).Build(),
+				}
+				return pcsg, pgs, cliques
+			},
+			wantAvailable: 1,
+			wantScheduled: 2,
+			wantBreached:  true,
+		},
+		{
+			name: "with terminating cliques",
+			setup: func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object) {
+				pcsg := testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+					WithReplicas(2).
+					WithCliqueNames([]string{"frontend", "backend"}).
+					WithOptions(testutils.WithPCSGObservedGeneration(1)).Build()
+				pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+				cliques := []client.Object{
+					// Replica 0: healthy
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					// Replica 1: has one terminating clique
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
+						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithOptions(testutils.WithPCLQTerminating()).Build(),
+				}
+				return pcsg, pgs, cliques
+			},
+			wantAvailable: 1,     // only replica 0 has all non-terminated cliques
+			wantScheduled: 1,     // only replica 0 has sufficient non-terminated cliques
+			wantBreached:  false, // 1 >= 1 (default minAvailable)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pcsg, pgs, cliques := tt.setup()
+			allObjects := append([]client.Object{pcsg, pgs}, cliques...)
+			fakeClient := testutils.SetupFakeClient(allObjects...)
+			reconciler := &Reconciler{client: fakeClient}
+
+			result := reconciler.reconcileStatus(ctx, logger, pcsg)
+
+			require.False(t, result.HasErrors())
+			assert.Equal(t, tt.wantAvailable, pcsg.Status.AvailableReplicas)
+			assert.Equal(t, tt.wantScheduled, pcsg.Status.ScheduledReplicas)
+
+			if pcsg.Status.ObservedGeneration != nil {
+				assertCondition(t, pcsg, tt.wantBreached)
 			}
 		})
 	}
 }
 
-// Test computePCSGAvailability function directly
+func TestReconcileStatus_EdgeCases(t *testing.T) {
+	ctx := context.Background()
+	logger := testutils.SetupTestLogger()
 
-func TestComputePCSGAvailability(t *testing.T) {
-	pcsg := buildTestPCSG(1, nil)
-
-	// Create PodCliques with proper owner references
-	frontend := testutils.NewPCSGPodCliqueBuilder("frontend-0", testNamespace, testPGSName, testPCSGName, 0, 0).
-		WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-		WithOptions(testutils.WithPCLQAvailable()).Build()
-	backend := testutils.NewPCSGPodCliqueBuilder("backend-0", testNamespace, testPGSName, testPCSGName, 0, 0).
-		WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-		WithOptions(testutils.WithPCLQAvailable()).Build()
-
-	healthyCliques := []client.Object{frontend, backend}
-
-	// Setup fake client
-	fakeClient := testutils.SetupFakeClient(healthyCliques...)
-	reconciler := &Reconciler{client: fakeClient}
-
-	// Execute computePCSGAvailability directly
-	available, err := reconciler.computePCSGAvailability(
-		testutils.SetupTestContext(),
-		testutils.SetupTestLogger(),
-		testPGSName,
-		pcsg,
-	)
-
-	// Verify results
-	require.NoError(t, err)
-	assert.Equal(t, int32(1), available, "should find 1 available replica")
-}
-
-// Simple integration test for basic scenarios
-
-func TestReconcileStatus_Basic(t *testing.T) {
-	// Test simple scenario: 1 replica with 2 healthy cliques
-	pcsg := buildTestPCSG(1, nil)
-	pgs := testutils.NewPGSBuilder(testPGSName, testNamespace).Build()
-
-	// Create 2 healthy cliques for replica 0
-	healthyCliques := []client.Object{
-		testutils.NewPCSGPodCliqueBuilder("frontend-0", testNamespace, testPGSName, testPCSGName, 0, 0).
-			WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-			WithOptions(testutils.WithPCLQAvailable()).Build(),
-		testutils.NewPCSGPodCliqueBuilder("backend-0", testNamespace, testPGSName, testPCSGName, 0, 0).
-			WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-			WithOptions(testutils.WithPCLQAvailable()).Build(),
-	}
-
-	// Setup fake client
-	allResources := append([]client.Object{pcsg, pgs}, healthyCliques...)
-	fakeClient := testutils.SetupFakeClient(allResources...)
-	reconciler := &Reconciler{client: fakeClient}
-
-	// Execute reconciliation
-	result := reconciler.reconcileStatus(
-		testutils.SetupTestContext(),
-		testutils.SetupTestLogger(),
-		pcsg,
-	)
-
-	// Verify results
-	require.False(t, result.HasErrors(), "reconcileStatus should not return errors")
-	assert.Equal(t, int32(1), pcsg.Status.AvailableReplicas, "should have 1 available replica")
-	assertCondition(t, pcsg, false)
-}
-
-// Full integration test for reconcileStatus function
-
-func TestReconcileStatus(t *testing.T) {
 	tests := []struct {
-		name               string
-		pcsgReplicas       int32
-		minAvailable       *int32
-		healthyCliques     int
-		breachedCliques    int
-		terminatingCliques int
-		expectedAvailable  int32
-		expectedBreached   bool
+		name string
+		pcsg *grovecorev1alpha1.PodCliqueScalingGroup
 	}{
 		{
-			name:              "single healthy replica",
-			pcsgReplicas:      1,
-			healthyCliques:    2, // 1 replica * 2 cliques
-			expectedAvailable: 1,
-			expectedBreached:  false,
+			name: "zero replicas",
+			pcsg: testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+				WithReplicas(0).
+				WithOptions(testutils.WithPCSGObservedGeneration(1)).Build(),
 		},
 		{
-			name:              "some breached",
-			pcsgReplicas:      2,
-			healthyCliques:    2, // replica 0: healthy cliques
-			breachedCliques:   2, // replica 1: breached cliques
-			expectedAvailable: 1,
-			expectedBreached:  false, // 1 >= default(1)
-		},
-		{
-			name:              "all breached",
-			pcsgReplicas:      1,
-			breachedCliques:   2,
-			expectedAvailable: 0,
-			expectedBreached:  true, // 0 < default(1)
-		},
-		{
-			name:              "custom minAvailable breached",
-			pcsgReplicas:      2,
-			minAvailable:      ptr.To(int32(2)),
-			healthyCliques:    2, // only 1 replica healthy
-			breachedCliques:   2,
-			expectedAvailable: 1,
-			expectedBreached:  true, // 1 < 2
-		},
-		{
-			name:               "terminating cliques",
-			pcsgReplicas:       1,
-			terminatingCliques: 2,
-			expectedAvailable:  0,
-			expectedBreached:   true,
+			name: "empty clique names",
+			pcsg: testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+				WithReplicas(1).
+				WithCliqueNames([]string{}).
+				WithOptions(testutils.WithPCSGObservedGeneration(1)).Build(),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup PCSG and PGS
-			pcsg := buildTestPCSG(tt.pcsgReplicas, tt.minAvailable)
-			pgs := testutils.NewPGSBuilder(testPGSName, testNamespace).Build()
-
-			// Build cliques for each replica
-			var allCliques []client.Object
-			replicaIndex := 0
-
-			// Add healthy cliques
-			for i := 0; i < tt.healthyCliques; i += 2 {
-				frontendName := "test-pgs-0-frontend-" + string(rune('0'+replicaIndex))
-				backendName := "test-pgs-0-backend-" + string(rune('0'+replicaIndex))
-				allCliques = append(allCliques,
-					testutils.NewPCSGPodCliqueBuilder(frontendName, testNamespace, testPGSName, testPCSGName, 0, replicaIndex).
-						WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
-					testutils.NewPCSGPodCliqueBuilder(backendName, testNamespace, testPGSName, testPCSGName, 0, replicaIndex).
-						WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
-				)
-				replicaIndex++
-			}
-
-			// Add breached cliques
-			for i := 0; i < tt.breachedCliques; i += 2 {
-				frontendName := "test-pgs-0-frontend-" + string(rune('0'+replicaIndex))
-				backendName := "test-pgs-0-backend-" + string(rune('0'+replicaIndex))
-				allCliques = append(allCliques,
-					testutils.NewPCSGPodCliqueBuilder(frontendName, testNamespace, testPGSName, testPCSGName, 0, replicaIndex).
-						WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-						WithOptions(testutils.WithPCLQMinAvailableBreached()).Build(),
-					testutils.NewPCSGPodCliqueBuilder(backendName, testNamespace, testPGSName, testPCSGName, 0, replicaIndex).
-						WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-						WithOptions(testutils.WithPCLQMinAvailableBreached()).Build(),
-				)
-				replicaIndex++
-			}
-
-			// Add terminating cliques
-			for i := 0; i < tt.terminatingCliques; i += 2 {
-				frontendName := "test-pgs-0-frontend-" + string(rune('0'+replicaIndex))
-				backendName := "test-pgs-0-backend-" + string(rune('0'+replicaIndex))
-				allCliques = append(allCliques,
-					testutils.NewPCSGPodCliqueBuilder(frontendName, testNamespace, testPGSName, testPCSGName, 0, replicaIndex).
-						WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-						WithOptions(testutils.WithPCLQTerminating()).Build(),
-					testutils.NewPCSGPodCliqueBuilder(backendName, testNamespace, testPGSName, testPCSGName, 0, replicaIndex).
-						WithOwnerReference("PodCliqueScalingGroup", testPCSGName, "").
-						WithOptions(testutils.WithPCLQTerminating()).Build(),
-				)
-				replicaIndex++
-			}
-
-			// Create fake client with all resources
-			allResources := append([]client.Object{pcsg, pgs}, allCliques...)
-			fakeClient := testutils.SetupFakeClient(allResources...)
+			pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+			fakeClient := testutils.SetupFakeClient(tt.pcsg, pgs)
 			reconciler := &Reconciler{client: fakeClient}
 
-			// Execute reconciliation
-			result := reconciler.reconcileStatus(
-				testutils.SetupTestContext(),
-				testutils.SetupTestLogger(),
-				pcsg,
-			)
+			result := reconciler.reconcileStatus(ctx, logger, tt.pcsg)
 
-			// Verify results
-			require.False(t, result.HasErrors(), "reconcileStatus should not return errors")
-			assert.Equal(t, tt.expectedAvailable, pcsg.Status.AvailableReplicas, "available replicas mismatch")
-			assert.Equal(t, tt.pcsgReplicas, pcsg.Status.Replicas, "total replicas should be set")
-
-			assertCondition(t, pcsg, tt.expectedBreached)
+			assert.False(t, result.HasErrors())
 		})
 	}
 }
