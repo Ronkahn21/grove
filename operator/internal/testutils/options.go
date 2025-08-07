@@ -37,7 +37,7 @@ func WithPCSGHealthy() PCSGOption {
 			{
 				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
 				Status: metav1.ConditionFalse,
-				Reason: grovecorev1alpha1.ConditionReasonSufficientReadyPCSGReplicas,
+				Reason: grovecorev1alpha1.ConditionReasonSufficientAvailablePCSGReplicas,
 			},
 		}
 	}
@@ -59,7 +59,7 @@ func WithPCSGMinAvailableBreached() PCSGOption {
 			{
 				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
 				Status: metav1.ConditionTrue,
-				Reason: grovecorev1alpha1.ConditionReasonInsufficientReadyPCSGReplicas,
+				Reason: grovecorev1alpha1.ConditionReasonInsufficientAvailablePCSGReplicas,
 			},
 		}
 	}
@@ -78,6 +78,13 @@ func WithPCSGUnknownCondition() PCSGOption {
 	}
 }
 
+// WithPCSGObservedGeneration sets the PCSG ObservedGeneration to enable status mutations.
+func WithPCSGObservedGeneration(generation int64) PCSGOption {
+	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
+		pcsg.Status.ObservedGeneration = &generation
+	}
+}
+
 // ============================================================================
 // PodClique Option Functions
 // ============================================================================
@@ -85,7 +92,7 @@ func WithPCSGUnknownCondition() PCSGOption {
 // PCLQOption is a function that modifies a PodClique for testing.
 type PCLQOption func(*grovecorev1alpha1.PodClique)
 
-// WithPCLQAvailable sets the PodClique to a healthy state with MinAvailableBreached=False.
+// WithPCLQAvailable sets the PodClique to a healthy state with MinAvailableBreached=False and PodCliqueScheduled=True.
 func WithPCLQAvailable() PCLQOption {
 	return func(pclq *grovecorev1alpha1.PodClique) {
 		pclq.Status.Conditions = []metav1.Condition{
@@ -93,6 +100,11 @@ func WithPCLQAvailable() PCLQOption {
 				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
 				Status: metav1.ConditionFalse,
 				Reason: "SufficientReadyReplicas",
+			},
+			{
+				Type:   grovecorev1alpha1.ConditionTypePodCliqueScheduled,
+				Status: metav1.ConditionTrue,
+				Reason: "ScheduledSuccessfully",
 			},
 		}
 		pclq.Status.ReadyReplicas = pclq.Spec.Replicas
@@ -108,7 +120,7 @@ func WithPCLQTerminating() PCLQOption {
 	}
 }
 
-// WithPCLQMinAvailableBreached sets the PodClique to have MinAvailableBreached=True.
+// WithPCLQMinAvailableBreached sets the PodClique to have MinAvailableBreached=True but scheduled.
 func WithPCLQMinAvailableBreached() PCLQOption {
 	return func(pclq *grovecorev1alpha1.PodClique) {
 		pclq.Status.Conditions = []metav1.Condition{
@@ -117,8 +129,49 @@ func WithPCLQMinAvailableBreached() PCLQOption {
 				Status: metav1.ConditionTrue,
 				Reason: "InsufficientReadyReplicas",
 			},
+			{
+				Type:   grovecorev1alpha1.ConditionTypePodCliqueScheduled,
+				Status: metav1.ConditionTrue,
+				Reason: "ScheduledSuccessfully",
+			},
 		}
 	}
+}
+
+// WithPCLQScheduled sets the PodClique to be scheduled but with unknown availability.
+func WithPCLQScheduled() PCLQOption {
+	return func(pclq *grovecorev1alpha1.PodClique) {
+		pclq.Status.Conditions = []metav1.Condition{
+			{
+				Type:   grovecorev1alpha1.ConditionTypePodCliqueScheduled,
+				Status: metav1.ConditionTrue,
+				Reason: "ScheduledSuccessfully",
+			},
+		}
+	}
+}
+
+// WithPCLQNotScheduled sets the PodClique to be not scheduled.
+func WithPCLQNotScheduled() PCLQOption {
+	return func(pclq *grovecorev1alpha1.PodClique) {
+		pclq.Status.Conditions = []metav1.Condition{
+			{
+				Type:   grovecorev1alpha1.ConditionTypePodCliqueScheduled,
+				Status: metav1.ConditionFalse,
+				Reason: "SchedulingFailed",
+			},
+		}
+	}
+}
+
+// WithPCLQScheduledAndAvailable sets the PodClique to be both scheduled and available.
+func WithPCLQScheduledAndAvailable() PCLQOption {
+	return WithPCLQAvailable()
+}
+
+// WithPCLQScheduledButBreached sets the PodClique to be scheduled but with breached availability.
+func WithPCLQScheduledButBreached() PCLQOption {
+	return WithPCLQMinAvailableBreached()
 }
 
 // WithPECLMinAvailableInUnknown sets the PodClique to have MinAvailableBreached=Unknown.
