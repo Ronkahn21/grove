@@ -37,6 +37,7 @@ import (
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 	"github.com/NVIDIA/grove/operator/internal/common"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -148,6 +149,12 @@ func (b *PGSBuilder) WithAnnotations(annotations map[string]string) *PGSBuilder 
 	for k, v := range annotations {
 		b.pgs.Annotations[k] = v
 	}
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the PodGangSet status.
+func (b *PGSBuilder) WithObservedGeneration(generation int64) *PGSBuilder {
+	b.pgs.Status.ObservedGeneration = &generation
 	return b
 }
 
@@ -325,7 +332,7 @@ func (b *PodCliqueBuilder) WithOwnerReference(kind, name, uid string) *PodClique
 	ownerRef := metav1.OwnerReference{
 		Kind: kind,
 		Name: name,
-		UID:  types.UID("test-uid"),
+		UID:  types.UID(""),
 	}
 	if uid != "" {
 		ownerRef.UID = types.UID(uid)
