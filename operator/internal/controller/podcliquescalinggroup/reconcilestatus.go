@@ -67,7 +67,7 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pc
 // if the replica is scheduled and available based on the conditions of the PodCliques.
 func computeReplicaStatus(logger logr.Logger, expectedPCSGReplicaPCLQSize int, pcsgReplicaIndex string, pclqs []grovecorev1alpha1.PodClique) (bool, bool) {
 	nonTerminatedPCLQs := lo.Filter(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
-		return pclq.DeletionTimestamp.IsZero()
+		return !k8sutils.IsResourceTerminating(pclq.ObjectMeta)
 	})
 
 	if len(nonTerminatedPCLQs) < expectedPCSGReplicaPCLQSize {

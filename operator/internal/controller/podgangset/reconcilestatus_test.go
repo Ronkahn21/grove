@@ -276,7 +276,7 @@ func TestComputePGSAvailableReplicas(t *testing.T) {
 						WithOptions(testutils.WithPCSGHealthy()).Build(),
 				}
 			},
-			expectedAvailable: 0,
+			expectedAvailable: 1,
 		},
 	}
 

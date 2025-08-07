@@ -24,6 +24,7 @@ import (
 	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	ctrlcommon "github.com/NVIDIA/grove/operator/internal/controller/common"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
+	"github.com/samber/lo"
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -107,27 +108,12 @@ func (r *Reconciler) computeExpectedResourceCounts(pgs *grovecorev1alpha1.PodGan
 }
 
 func (r *Reconciler) checkPGSReplicaAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, replicaIndex int, replicaPCSGs []grovecorev1alpha1.PodCliqueScalingGroup, standalonePCLQs []grovecorev1alpha1.PodClique, expectedPCSGs int, expectedStandalonePCLQs int) bool {
-	// Check if the number of standalone PodCliques matches expected count
-	if len(standalonePCLQs) != expectedStandalonePCLQs {
-		logger.Info("Standalone PodCliques count mismatch for PGS replica index, considering it not available",
-			"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex,
-			"expectedCount", expectedStandalonePCLQs, "actualCount", len(standalonePCLQs))
+
+	if !r.isPGSReplicaPCLAsAvailable(logger, pgs, expectedStandalonePCLQs, replicaIndex, standalonePCLQs) {
 		return false
 	}
 
-	// Check if the number of PCSGs matches expected count
-	if len(replicaPCSGs) != expectedPCSGs {
-		logger.Info("PodCliqueScalingGroups count mismatch for PGS replica index, considering it not available",
-			"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex,
-			"expectedCount", expectedPCSGs, "actualCount", len(replicaPCSGs))
-		return false
-	}
-
-	if !r.checkPCLQsAvailability(logger, pgs, replicaIndex, standalonePCLQs) {
-		return false
-	}
-
-	if !r.checkPCSGsAvailability(logger, pgs, replicaIndex, replicaPCSGs) {
+	if !r.checkPCSGsAvailability(logger, pgs, expectedPCSGs, replicaIndex, replicaPCSGs) {
 		return false
 	}
 
@@ -135,42 +121,41 @@ func (r *Reconciler) checkPGSReplicaAvailability(logger logr.Logger, pgs *grovec
 	return true
 }
 
-func (r *Reconciler) checkPCLQsAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, replicaIndex int, pclqs []grovecorev1alpha1.PodClique) bool {
-	for _, pclq := range pclqs {
-		logger.Info("MinAvailable condition status for PCLQ", "pclq", client.ObjectKeyFromObject(&pclq), "status", k8sutils.GetConditionStatus(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached))
-
-		// Check if resource is terminating (PCSG-inspired logic)
-		if k8sutils.IsResourceTerminating(pclq.ObjectMeta) {
-			logger.Info("PodClique is marked for termination, PGS replica considered not available",
-				"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex",
-				replicaIndex, "pclq", client.ObjectKeyFromObject(&pclq))
-			return false
-		}
-
-		// Check MinAvailableBreached condition
-		if !k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached) {
-			logger.Info("PodClique has MinAvailableBreached=True", "pgs",
-				client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "pclq", client.ObjectKeyFromObject(&pclq))
-			return false
-		}
+func (r *Reconciler) isPGSReplicaPCLAsAvailable(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, expectedStandalonePCLQs, replicaIndex int, pclqs []grovecorev1alpha1.PodClique) bool {
+	nonTerminatedPCLQs := lo.Filter(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
+		return !k8sutils.IsResourceTerminating(pclq.ObjectMeta)
+	})
+	if len(nonTerminatedPCLQs) < expectedStandalonePCLQs {
+		logger.Info("PGS replica does not have all expected PodCliques",
+			"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex,
+			"expectedStandalonePCLQs", expectedStandalonePCLQs, "actualPCLQsCount", len(pclqs))
+		return false
 	}
-	return true
+
+	isAvailable := lo.Reduce(nonTerminatedPCLQs, func(agg bool, pclq grovecorev1alpha1.PodClique, _ int) bool {
+		return agg && k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
+	}, true)
+
+	logger.Info("PGS replica availability status", "pgs",
+		client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "isAvailable", isAvailable)
+	return isAvailable
 }
 
-func (r *Reconciler) checkPCSGsAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, replicaIndex int, pcsgs []grovecorev1alpha1.PodCliqueScalingGroup) bool {
-	for _, pcsg := range pcsgs {
-		// Check if PCSG is terminating (PCSG-inspired logic)
-		if k8sutils.IsResourceTerminating(pcsg.ObjectMeta) {
-			logger.Info("PCSG is marked for termination, PGS replica considered not available",
-				"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "pcsg", client.ObjectKeyFromObject(&pcsg))
-			return false
-		}
-
-		// Check MinAvailableBreached condition
-		if !k8sutils.IsConditionFalse(pcsg.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached) {
-			logger.Info("PCSG has MinAvailableBreached=True", "pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "pcsg", client.ObjectKeyFromObject(&pcsg))
-			return false
-		}
+func (r *Reconciler) checkPCSGsAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, expectedPCSGs, replicaIndex int, pcsgs []grovecorev1alpha1.PodCliqueScalingGroup) bool {
+	nonTerminatedPCSGs := lo.Filter(pcsgs, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) bool {
+		return !k8sutils.IsResourceTerminating(pcsg.ObjectMeta)
+	})
+	if len(nonTerminatedPCSGs) < expectedPCSGs {
+		logger.Info("PGS replica does not have all expected PodCliqueScalingGroups",
+			"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex,
+			"expectedPCSGs", expectedPCSGs, "actualPCSGsCount", len(pcsgs))
+		return false
 	}
-	return true
+	isAvailable := lo.Reduce(nonTerminatedPCSGs, func(agg bool, pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) bool {
+		return agg && k8sutils.IsConditionFalse(pcsg.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
+	}, true)
+
+	logger.Info("PGS replica PCSG availability status", "pgs",
+		client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "isAvailable", isAvailable)
+	return isAvailable
 }
