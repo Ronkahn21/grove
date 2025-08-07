@@ -36,8 +36,8 @@ const (
 // setupTestReconciler creates a reconciler with fake client containing the provided objects
 func setupTestReconciler(pgs *grovecorev1alpha1.PodGangSet, childObjects []client.Object) *Reconciler {
 	allObjects := append([]client.Object{pgs}, childObjects...)
-	client := testutils.SetupFakeClient(allObjects...)
-	return &Reconciler{client: client}
+	fakeClient := testutils.SetupFakeClient(allObjects...)
+	return &Reconciler{client: fakeClient}
 }
 
 // assertAvailableReplicas runs the computePGSAvailableReplicas test and validates the result

@@ -127,6 +127,4 @@ const (
 	ConditionReasonInsufficientReadyPCSGReplicas = "InsufficientReadyPCSGReplicas"
 	// ConditionReasonSufficientReadyPCSGReplicas indicates ready replicas in PodCliqueScalingGroup meet or exceed MinAvailable
 	ConditionReasonSufficientReadyPCSGReplicas = "SufficientReadyPCSGReplicas"
-	// ConditionReasonPCSGReplicasInUnknownState indicates PodCliqueScalingGroup replicas are in unknown state
-	ConditionReasonPCSGReplicasInUnknownState = "PodCliqueScalingGroupReplicasInUnknownState"
 )

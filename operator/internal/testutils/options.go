@@ -78,40 +78,6 @@ func WithPCSGUnknownCondition() PCSGOption {
 	}
 }
 
-// WithPCSGNoConditions removes all conditions from the PCSG status.
-func WithPCSGNoConditions() PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		pcsg.Status.Conditions = []metav1.Condition{}
-	}
-}
-
-// WithPCSGAvailableReplicas sets the AvailableReplicas field in the PCSG status.
-func WithPCSGAvailableReplicas(available int32) PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		pcsg.Status.AvailableReplicas = available
-	}
-}
-
-// WithPCSGReplicas sets the Replicas field in the PCSG status.
-func WithPCSGReplicas(replicas int32) PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		pcsg.Status.Replicas = replicas
-	}
-}
-
-// WithPCSGCustomCondition adds a custom condition to the PCSG status.
-func WithPCSGCustomCondition(conditionType string, status metav1.ConditionStatus, reason, message string) PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		condition := metav1.Condition{
-			Type:    conditionType,
-			Status:  status,
-			Reason:  reason,
-			Message: message,
-		}
-		pcsg.Status.Conditions = append(pcsg.Status.Conditions, condition)
-	}
-}
-
 // ============================================================================
 // PodClique Option Functions
 // ============================================================================
@@ -194,46 +160,3 @@ func WithPCLQCustomCondition(conditionType string, status metav1.ConditionStatus
 
 // PGSOption is a function that modifies a PodGangSet for testing.
 type PGSOption func(*grovecorev1alpha1.PodGangSet)
-
-// WithPGSAvailableReplicas sets the AvailableReplicas field in the PodGangSet status.
-func WithPGSAvailableReplicas(available int32) PGSOption {
-	return func(pgs *grovecorev1alpha1.PodGangSet) {
-		pgs.Status.AvailableReplicas = available
-	}
-}
-
-// WithPGSReplicas sets the Replicas field in the PodGangSet status.
-func WithPGSReplicas(replicas int32) PGSOption {
-	return func(pgs *grovecorev1alpha1.PodGangSet) {
-		pgs.Status.Replicas = replicas
-	}
-}
-
-// WithPGSTerminating marks the PodGangSet for termination with a DeletionTimestamp.
-func WithPGSTerminating() PGSOption {
-	return func(pgs *grovecorev1alpha1.PodGangSet) {
-		now := metav1.NewTime(time.Now())
-		pgs.DeletionTimestamp = &now
-		pgs.Finalizers = []string{"test-finalizer"}
-	}
-}
-
-// ============================================================================
-// Composite Options
-// ============================================================================
-
-// WithPCSGTerminatingAndBreached applies both terminating and MinAvailableBreached=True to a PCSG.
-func WithPCSGTerminatingAndBreached() PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		WithPCSGTerminating()(pcsg)
-		WithPCSGMinAvailableBreached()(pcsg)
-	}
-}
-
-// WithPCLQTerminatingAndBreached applies both terminating and MinAvailableBreached=True to a PodClique.
-func WithPCLQTerminatingAndBreached() PCLQOption {
-	return func(pclq *grovecorev1alpha1.PodClique) {
-		WithPCLQTerminating()(pclq)
-		WithPCLQMinAvailableBreached()(pclq)
-	}
-}
