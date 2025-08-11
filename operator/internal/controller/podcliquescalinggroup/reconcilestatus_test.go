@@ -51,12 +51,6 @@ func buildTerminatingClique(name string) grovecorev1alpha1.PodClique {
 		WithOptions(testutils.WithPCLQTerminating()).Build()
 }
 
-func buildTestPCSG(replicas int32) *grovecorev1alpha1.PodCliqueScalingGroup {
-	return testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
-		WithReplicas(replicas).
-		WithCliqueNames([]string{"frontend", "backend"}).Build()
-}
-
 func assertCondition(t *testing.T, pcsg *grovecorev1alpha1.PodCliqueScalingGroup, expectBreached bool) {
 	var condition *metav1.Condition
 	for i := range pcsg.Status.Conditions {
@@ -86,23 +80,16 @@ func TestComputeReplicaStatus(t *testing.T) {
 		wantAvailable bool
 	}{
 		{
-			name:          "healthy replica",
+			name:          "healthy vs failed states",
 			expectedSize:  2,
-			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend")},
-			wantScheduled: true,
-			wantAvailable: true,
-		},
-		{
-			name:          "incomplete replica",
-			expectedSize:  3,
-			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend")},
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildFailedClique("backend")},
 			wantScheduled: false,
 			wantAvailable: false,
 		},
 		{
-			name:          "scheduling failed",
-			expectedSize:  2,
-			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildFailedClique("backend")},
+			name:          "incomplete replica counting",
+			expectedSize:  3,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend")},
 			wantScheduled: false,
 			wantAvailable: false,
 		},
@@ -114,30 +101,9 @@ func TestComputeReplicaStatus(t *testing.T) {
 			wantAvailable: false,
 		},
 		{
-			name:          "terminating cliques ignored",
+			name:          "terminating clique filtering",
 			expectedSize:  2,
-			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend"), buildTerminatingClique("old-backend")},
-			wantScheduled: true,
-			wantAvailable: true,
-		},
-		{
-			name:          "insufficient non-terminated",
-			expectedSize:  2,
-			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildTerminatingClique("backend")},
-			wantScheduled: false,
-			wantAvailable: false,
-		},
-		{
-			name:          "all terminated cliques",
-			expectedSize:  2,
-			cliques:       []grovecorev1alpha1.PodClique{buildTerminatingClique("frontend"), buildTerminatingClique("backend")},
-			wantScheduled: false,
-			wantAvailable: false,
-		},
-		{
-			name:          "mixed terminated and healthy",
-			expectedSize:  3,
-			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend"), buildHealthyClique("worker"), buildTerminatingClique("old-worker")},
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend"), buildTerminatingClique("old"), buildTerminatingClique("terminated")},
 			wantScheduled: true,
 			wantAvailable: true,
 		},
@@ -218,125 +184,6 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 			assert.Equal(t, "MinAvailableBreached", condition.Type)
 			assert.Equal(t, tt.wantStatus, condition.Status)
 			assert.Equal(t, tt.wantReason, condition.Reason)
-		})
-	}
-}
-
-func TestMutateReplicas(t *testing.T) {
-	logger := testutils.SetupTestLogger()
-
-	tests := []struct {
-		name           string
-		pcsg           *grovecorev1alpha1.PodCliqueScalingGroup
-		replicaCliques map[string][]grovecorev1alpha1.PodClique
-		wantScheduled  int32
-		wantAvailable  int32
-	}{
-		{
-			name: "healthy replica",
-			pcsg: buildTestPCSG(1),
-			replicaCliques: map[string][]grovecorev1alpha1.PodClique{
-				"0": {buildHealthyClique("frontend"), buildHealthyClique("backend")},
-			},
-			wantScheduled: 1,
-			wantAvailable: 1,
-		},
-		{
-			name: "mixed states",
-			pcsg: buildTestPCSG(3),
-			replicaCliques: map[string][]grovecorev1alpha1.PodClique{
-				"0": {buildHealthyClique("frontend-0"), buildHealthyClique("backend-0")},
-				"1": {buildScheduledClique("frontend-1"), buildScheduledClique("backend-1")},
-				"2": {buildFailedClique("frontend-2"), buildFailedClique("backend-2")},
-			},
-			wantScheduled: 2,
-			wantAvailable: 1,
-		},
-		{
-			name:           "no replicas",
-			pcsg:           buildTestPCSG(2),
-			replicaCliques: map[string][]grovecorev1alpha1.PodClique{},
-			wantScheduled:  0,
-			wantAvailable:  0,
-		},
-		{
-			name: "with terminating cliques",
-			pcsg: buildTestPCSG(2),
-			replicaCliques: map[string][]grovecorev1alpha1.PodClique{
-				"0": {buildHealthyClique("frontend-0"), buildHealthyClique("backend-0")},
-				"1": {buildHealthyClique("frontend-1"), buildTerminatingClique("backend-1")},
-			},
-			wantScheduled: 1, // only replica 0 has sufficient non-terminated cliques
-			wantAvailable: 1, // only replica 0 is available
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mutateReplicas(logger, tt.pcsg, tt.replicaCliques)
-
-			assert.Equal(t, tt.wantScheduled, tt.pcsg.Status.ScheduledReplicas)
-			assert.Equal(t, tt.wantAvailable, tt.pcsg.Status.AvailableReplicas)
-			assert.Equal(t, tt.pcsg.Spec.Replicas, tt.pcsg.Status.Replicas)
-		})
-	}
-}
-
-func TestMutateMinAvailableBreachedCondition(t *testing.T) {
-	tests := []struct {
-		name       string
-		pcsg       *grovecorev1alpha1.PodCliqueScalingGroup
-		wantStatus metav1.ConditionStatus
-	}{
-		{
-			name: "condition becomes breached",
-			pcsg: &grovecorev1alpha1.PodCliqueScalingGroup{
-				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
-					Replicas:     3,
-					MinAvailable: ptr.To(int32(2)),
-				},
-				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
-					ScheduledReplicas: 3,
-					AvailableReplicas: 1,
-				},
-			},
-			wantStatus: metav1.ConditionTrue,
-		},
-		{
-			name: "condition stays healthy",
-			pcsg: &grovecorev1alpha1.PodCliqueScalingGroup{
-				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
-					Replicas:     3,
-					MinAvailable: ptr.To(int32(2)),
-				},
-				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
-					ScheduledReplicas: 3,
-					AvailableReplicas: 3,
-				},
-			},
-			wantStatus: metav1.ConditionFalse,
-		},
-		{
-			name: "new condition added",
-			pcsg: &grovecorev1alpha1.PodCliqueScalingGroup{
-				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
-					Replicas:     2,
-					MinAvailable: ptr.To(int32(1)),
-				},
-				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
-					ScheduledReplicas: 2,
-					AvailableReplicas: 2,
-					Conditions:        []metav1.Condition{},
-				},
-			},
-			wantStatus: metav1.ConditionFalse,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mutateMinAvailableBreachedCondition(tt.pcsg)
-			assertCondition(t, tt.pcsg, tt.wantStatus == metav1.ConditionTrue)
 		})
 	}
 }

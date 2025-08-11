@@ -180,7 +180,7 @@ func TestIsAvailable(t *testing.T) {
 }
 
 func TestGetPCLQCondition(t *testing.T) {
-	pclq := testutils.NewPodCliqueBuilder("test-pclq", "default", "test-pgs", 0).
+	pclq := testutils.NewPodCliqueBuilder("test-pclq", testNamespace, testPGSName, testReplicaIndex).
 		WithOptions(testutils.WithPCLQAvailable()).
 		Build()
 
@@ -195,7 +195,7 @@ func TestGetPCLQCondition(t *testing.T) {
 }
 
 func TestGetPCSGCondition(t *testing.T) {
-	pcsg := testutils.NewPCSGBuilder("test-pcsg", "default", "test-pgs", 0).
+	pcsg := testutils.NewPCSGBuilder("test-pcsg", testNamespace, testPGSName, testReplicaIndex).
 		WithOptions(testutils.WithPCSGHealthy()).
 		Build()
 
