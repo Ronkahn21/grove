@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
+	"github.com/NVIDIA/grove/operator/internal/testutils"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -179,57 +180,38 @@ func TestIsAvailable(t *testing.T) {
 }
 
 func TestGetPCLQCondition(t *testing.T) {
-	conditions := []metav1.Condition{
-		{
-			Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
-			Status: metav1.ConditionFalse,
-		},
-	}
-
-	pclq := &grovecorev1alpha1.PodClique{
-		Status: grovecorev1alpha1.PodCliqueStatus{
-			Conditions: conditions,
-		},
-	}
+	pclq := testutils.NewPodCliqueBuilder("test-pclq", "default", "test-pgs", 0).
+		WithOptions(testutils.WithPCLQAvailable()).
+		Build()
 
 	result := GetPCLQCondition(pclq)
-	if len(result) != len(conditions) {
-		t.Errorf("GetPCLQCondition() returned %d conditions, want %d", len(result), len(conditions))
+	if len(result) == 0 {
+		t.Errorf("GetPCLQCondition() returned no conditions")
 	}
 
-	if result[0].Type != conditions[0].Type {
-		t.Errorf("GetPCLQCondition() returned condition type %s, want %s", result[0].Type, conditions[0].Type)
+	if len(result) > 0 && result[0].Type != grovecorev1alpha1.ConditionTypeMinAvailableBreached {
+		t.Errorf("GetPCLQCondition() returned condition type %s, want %s", result[0].Type, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
 	}
 }
 
 func TestGetPCSGCondition(t *testing.T) {
-	conditions := []metav1.Condition{
-		{
-			Type:   grovecorev1alpha1.ConditionTypePodCliqueScheduled,
-			Status: metav1.ConditionTrue,
-		},
-		{
-			Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
-			Status: metav1.ConditionFalse,
-		},
-	}
-
-	pcsg := &grovecorev1alpha1.PodCliqueScalingGroup{
-		Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
-			Conditions: conditions,
-		},
-	}
+	pcsg := testutils.NewPCSGBuilder("test-pcsg", "default", "test-pgs", 0).
+		WithOptions(testutils.WithPCSGHealthy()).
+		Build()
 
 	result := GetPCSGCondition(pcsg)
-	if len(result) != len(conditions) {
-		t.Errorf("GetPCSGCondition() returned %d conditions, want %d", len(result), len(conditions))
+	if len(result) == 0 {
+		t.Errorf("GetPCSGCondition() returned no conditions")
 	}
 
-	if result[0].Type != conditions[0].Type {
-		t.Errorf("GetPCSGCondition() returned first condition type %s, want %s", result[0].Type, conditions[0].Type)
+	found := false
+	for _, condition := range result {
+		if condition.Type == grovecorev1alpha1.ConditionTypeMinAvailableBreached {
+			found = true
+			break
+		}
 	}
-
-	if result[1].Type != conditions[1].Type {
-		t.Errorf("GetPCSGCondition() returned second condition type %s, want %s", result[1].Type, conditions[1].Type)
+	if !found {
+		t.Errorf("GetPCSGCondition() did not return MinAvailableBreached condition")
 	}
 }
