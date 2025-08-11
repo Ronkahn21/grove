@@ -77,9 +77,9 @@ HeadlessServiceConfig defines the config options for the headless service.
 _Appears in:_
 - [PodGangSetTemplateSpec](#podgangsettemplatespec)
 
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `publishNotReadyAddresses` _boolean_ | PublishNotReadyAddresses if set to true will publish the DNS records of pods even if the pods are not ready. |  |  |
+| Field                                | Description                                                                                                                                         | Default | Validation |
+|--------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
+| `publishNotReadyAddresses` _boolean_ | PublishNotReadyAddresses if set to true will publish the DNS records of pods even if the pods are not ready.<br /> if not set, it defaults to true. | true    |            |
 
 
 #### LastError
