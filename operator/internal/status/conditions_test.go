@@ -184,7 +184,7 @@ func TestGetPCLQCondition(t *testing.T) {
 		WithOptions(testutils.WithPCLQAvailable()).
 		Build()
 
-	result := GetPCLQCondition(pclq)
+	result := GetPCLQCondition(*pclq)
 	if len(result) == 0 {
 		t.Errorf("GetPCLQCondition() returned no conditions")
 	}
@@ -199,7 +199,7 @@ func TestGetPCSGCondition(t *testing.T) {
 		WithOptions(testutils.WithPCSGHealthy()).
 		Build()
 
-	result := GetPCSGCondition(pcsg)
+	result := GetPCSGCondition(*pcsg)
 	if len(result) == 0 {
 		t.Errorf("GetPCSGCondition() returned no conditions")
 	}

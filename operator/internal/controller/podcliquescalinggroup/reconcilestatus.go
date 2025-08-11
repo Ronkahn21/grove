@@ -67,19 +67,14 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pc
 func computeReplicaStatus(logger logr.Logger, expectedPCSGReplicaPCLQSize int, pcsgReplicaIndex string, pclqs []grovecorev1alpha1.PodClique) (bool, bool) {
 	replicaIndex, _ := strconv.Atoi(pcsgReplicaIndex)
 
-	// Convert to pointers for client.Object interface
-	pclqPointers := lo.Map(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) *grovecorev1alpha1.PodClique {
-		return &pclq
-	})
-
 	isScheduled := status.ValidateReplicaScheduled(
-		logger, pclqPointers, expectedPCSGReplicaPCLQSize,
+		logger, pclqs, expectedPCSGReplicaPCLQSize,
 		status.GetPCLQCondition,
 		grovecorev1alpha1.PodCliqueKind, replicaIndex,
 	)
 
 	isAvailable := status.ValidateReplicaAvailable(
-		logger, pclqPointers, expectedPCSGReplicaPCLQSize,
+		logger, pclqs, expectedPCSGReplicaPCLQSize,
 		status.GetPCLQCondition,
 		grovecorev1alpha1.PodCliqueKind, replicaIndex,
 	)

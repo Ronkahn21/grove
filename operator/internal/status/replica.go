@@ -17,16 +17,19 @@
 package status
 
 import (
+	"github.com/NVIDIA/grove/operator/internal/component"
 	"github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
 
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // ValidateReplicaAvailable validates that replica resources meet availability requirements
-func ValidateReplicaAvailable[T client.Object](
+func ValidateReplicaAvailable[T component.GroveCustomResourceType, P interface {
+	metav1.Object
+	*T
+}](
 	logger logr.Logger,
 	resources []T,
 	expectedCount int,
@@ -34,7 +37,7 @@ func ValidateReplicaAvailable[T client.Object](
 	resourceType string,
 	replicaIndex int,
 ) bool {
-	return validateReplicaState(
+	return validateReplicaState[T, P](
 		logger, resources, expectedCount,
 		getConditions, IsAvailable,
 		resourceType, replicaIndex,
@@ -42,7 +45,10 @@ func ValidateReplicaAvailable[T client.Object](
 }
 
 // ValidateReplicaScheduled validates that replica resources are scheduled
-func ValidateReplicaScheduled[T client.Object](
+func ValidateReplicaScheduled[T component.GroveCustomResourceType, P interface {
+	metav1.Object
+	*T
+}](
 	logger logr.Logger,
 	resources []T,
 	expectedCount int,
@@ -50,7 +56,7 @@ func ValidateReplicaScheduled[T client.Object](
 	resourceType string,
 	replicaIndex int,
 ) bool {
-	return validateReplicaState(
+	return validateReplicaState[T, P](
 		logger, resources, expectedCount,
 		getConditions, IsScheduled,
 		resourceType, replicaIndex,
@@ -58,7 +64,10 @@ func ValidateReplicaScheduled[T client.Object](
 }
 
 // validateReplicaState is internal helper for replica validation
-func validateReplicaState[T client.Object](
+func validateReplicaState[T component.GroveCustomResourceType, P interface {
+	metav1.Object
+	*T
+}](
 	logger logr.Logger,
 	resources []T,
 	expectedCount int,
@@ -68,7 +77,8 @@ func validateReplicaState[T client.Object](
 	replicaIndex int,
 ) bool {
 	nonTerminated := lo.Filter(resources, func(r T, _ int) bool {
-		return !kubernetes.IsResourceTerminating(r)
+		var p P = &r
+		return !kubernetes.IsResourceTerminating(p)
 	})
 
 	if len(nonTerminated) < expectedCount {
