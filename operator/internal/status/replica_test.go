@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
+
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -201,11 +202,11 @@ func TestValidateReplicaState_WithPCSG(t *testing.T) {
 			name: "PCSG resources scheduled",
 			resources: []*grovecorev1alpha1.PodCliqueScalingGroup{
 				createTestPCSG("pcsg-1", true, false),
-				createTestPCSG("pcsg-2", true, true), // scheduled but not available
+				createTestPCSG("pcsg-2", false, true), // not scheduled but available
 			},
 			expectedCount: 2,
 			stateFunc:     IsScheduled,
-			expected:      true,
+			expected:      false,
 		},
 	}
 
@@ -260,7 +261,7 @@ func createTestPodClique(name string, scheduled, minAvailableBreached bool) *gro
 
 func createTestPodCliqueTerminating(name string, scheduled bool, deletionTime *metav1.Time) *grovecorev1alpha1.PodClique {
 	pclq := createTestPodClique(name, scheduled, false)
-	pclq.ObjectMeta.DeletionTimestamp = deletionTime
+	pclq.DeletionTimestamp = deletionTime
 	return pclq
 }
 

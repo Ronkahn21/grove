@@ -18,6 +18,7 @@ package status
 
 import (
 	"github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
+
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -66,9 +67,8 @@ func validateReplicaState[T client.Object](
 	resourceType string,
 	replicaIndex int,
 ) bool {
-
 	nonTerminated := lo.Filter(resources, func(r T, _ int) bool {
-		return kubernetes.IsResourceTerminating(r) == false
+		return !kubernetes.IsResourceTerminating(r)
 	})
 
 	if len(nonTerminated) < expectedCount {
