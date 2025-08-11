@@ -18,6 +18,7 @@ package utils
 
 import (
 	"github.com/NVIDIA/grove/operator/internal/component"
+
 	"github.com/samber/lo"
 )
 
