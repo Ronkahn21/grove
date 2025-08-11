@@ -126,13 +126,11 @@ func GroupPCSGsByPGSReplicaIndex(pcsgs []grovecorev1alpha1.PodCliqueScalingGroup
 
 // groupPCSGsByLabel groups PCSGs by the specified label key.
 func groupPCSGsByLabel(pcsgs []grovecorev1alpha1.PodCliqueScalingGroup, labelKey string) map[string][]grovecorev1alpha1.PodCliqueScalingGroup {
-	pcsgsByLabel := make(map[string][]grovecorev1alpha1.PodCliqueScalingGroup, len(pcsgs))
-	for _, pcsg := range pcsgs {
-		labelVal, ok := pcsg.GetLabels()[labelKey]
-		if !ok {
-			continue
-		}
-		pcsgsByLabel[labelVal] = append(pcsgsByLabel[labelVal], pcsg)
-	}
-	return pcsgsByLabel
+	pcsgsWithLabel := lo.Filter(pcsgs, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) bool {
+		_, ok := pcsg.GetLabels()[labelKey]
+		return ok
+	})
+	return lo.GroupBy(pcsgsWithLabel, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup) string {
+		return pcsg.GetLabels()[labelKey]
+	})
 }
