@@ -23,7 +23,7 @@ import (
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	ctrlcommon "github.com/NVIDIA/grove/operator/internal/controller/common"
-	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
+	"github.com/NVIDIA/grove/operator/internal/status"
 
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
@@ -110,11 +110,11 @@ func (r *Reconciler) computeExpectedResourceCounts(pgs *grovecorev1alpha1.PodGan
 }
 
 func (r *Reconciler) checkPGSReplicaAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, replicaIndex int, replicaPCSGs []grovecorev1alpha1.PodCliqueScalingGroup, standalonePCLQs []grovecorev1alpha1.PodClique, expectedPCSGs int, expectedStandalonePCLQs int) bool {
-	if !r.isPGSReplicaPCLAsAvailable(logger, pgs, expectedStandalonePCLQs, replicaIndex, standalonePCLQs) {
+	if !r.isPGSReplicaPCLAsAvailable(logger, expectedStandalonePCLQs, replicaIndex, standalonePCLQs) {
 		return false
 	}
 
-	if !r.checkPCSGsAvailability(logger, pgs, expectedPCSGs, replicaIndex, replicaPCSGs) {
+	if !r.checkPCSGsAvailability(logger, expectedPCSGs, replicaIndex, replicaPCSGs) {
 		return false
 	}
 
@@ -122,41 +122,26 @@ func (r *Reconciler) checkPGSReplicaAvailability(logger logr.Logger, pgs *grovec
 	return true
 }
 
-func (r *Reconciler) isPGSReplicaPCLAsAvailable(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, expectedStandalonePCLQs, replicaIndex int, pclqs []grovecorev1alpha1.PodClique) bool {
-	nonTerminatedPCLQs := lo.Filter(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
-		return !k8sutils.IsResourceTerminating(pclq.ObjectMeta)
+func (r *Reconciler) isPGSReplicaPCLAsAvailable(logger logr.Logger, expectedStandalonePCLQs, replicaIndex int, pclqs []grovecorev1alpha1.PodClique) bool {
+	// Convert to pointers for client.Object interface
+	pclqPointers := lo.Map(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) *grovecorev1alpha1.PodClique {
+		return &pclq
 	})
-	if len(nonTerminatedPCLQs) < expectedStandalonePCLQs {
-		logger.Info("PGS replica does not have all expected PodCliques",
-			"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex,
-			"expectedStandalonePCLQs", expectedStandalonePCLQs, "actualPCLQsCount", len(pclqs))
-		return false
-	}
-
-	isAvailable := lo.Reduce(nonTerminatedPCLQs, func(agg bool, pclq grovecorev1alpha1.PodClique, _ int) bool {
-		return agg && k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
-	}, true)
-
-	logger.Info("PGS replica availability status", "pgs",
-		client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "isAvailable", isAvailable)
-	return isAvailable
+	return status.ValidateReplicaAvailable(
+		logger, pclqPointers, expectedStandalonePCLQs,
+		status.GetPCLQCondition,
+		grovecorev1alpha1.PodCliqueKind, replicaIndex,
+	)
 }
 
-func (r *Reconciler) checkPCSGsAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, expectedPCSGs, replicaIndex int, pcsgs []grovecorev1alpha1.PodCliqueScalingGroup) bool {
-	nonTerminatedPCSGs := lo.Filter(pcsgs, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) bool {
-		return !k8sutils.IsResourceTerminating(pcsg.ObjectMeta)
+func (r *Reconciler) checkPCSGsAvailability(logger logr.Logger, expectedPCSGs, replicaIndex int, pcsgs []grovecorev1alpha1.PodCliqueScalingGroup) bool {
+	// Convert to pointers for client.Object interface
+	pcsgPointers := lo.Map(pcsgs, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) *grovecorev1alpha1.PodCliqueScalingGroup {
+		return &pcsg
 	})
-	if len(nonTerminatedPCSGs) < expectedPCSGs {
-		logger.Info("PGS replica does not have all expected PodCliqueScalingGroups",
-			"pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex,
-			"expectedPCSGs", expectedPCSGs, "actualPCSGsCount", len(pcsgs))
-		return false
-	}
-	isAvailable := lo.Reduce(nonTerminatedPCSGs, func(agg bool, pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) bool {
-		return agg && k8sutils.IsConditionFalse(pcsg.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
-	}, true)
-
-	logger.Info("PGS replica PCSG availability status", "pgs",
-		client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex, "isAvailable", isAvailable)
-	return isAvailable
+	return status.ValidateReplicaAvailable(
+		logger, pcsgPointers, expectedPCSGs,
+		status.GetPCSGCondition,
+		grovecorev1alpha1.PodCliqueScalingGroupKind, replicaIndex,
+	)
 }
