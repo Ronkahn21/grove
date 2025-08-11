@@ -19,6 +19,7 @@ package status
 import (
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -32,10 +33,12 @@ func IsAvailable(conditions []metav1.Condition) bool {
 	return k8sutils.IsConditionFalse(conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
 }
 
+// GetPCLQCondition extracts conditions from PodClique
 func GetPCLQCondition(pclq *grovecorev1alpha1.PodClique) []metav1.Condition {
 	return pclq.Status.Conditions
 }
 
+// GetPCSGCondition extracts conditions from PodCliqueScalingGroup
 func GetPCSGCondition(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) []metav1.Condition {
 	return pcsg.Status.Conditions
 }
