@@ -26,6 +26,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	testNamespace    = "default"
+	testPGSName      = "test-pgs"
+	testReplicaIndex = 0
+)
+
+func newTestPodClique(name string, opts ...testutils.PCLQOption) *grovecorev1alpha1.PodClique {
+	return testutils.NewPodCliqueBuilder(name, testNamespace, testPGSName, testReplicaIndex).
+		WithOptions(opts...).
+		Build()
+}
+
+func newTestPCSG(name string, opts ...testutils.PCSGOption) *grovecorev1alpha1.PodCliqueScalingGroup {
+	return testutils.NewPCSGBuilder(name, testNamespace, testPGSName, testReplicaIndex).
+		WithOptions(opts...).
+		Build()
+}
+
 func TestValidateReplicaAvailable(t *testing.T) {
 	logger := logr.Discard()
 
@@ -38,8 +56,8 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		{
 			name: "all resources available",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),
+				newTestPodClique("available-1", testutils.WithPCLQAvailable()),
+				newTestPodClique("available-2", testutils.WithPCLQAvailable()),
 			},
 			expectedCount: 2,
 			expected:      true,
@@ -47,8 +65,8 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		{
 			name: "some resources unavailable",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),            // available
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQMinAvailableBreached()).Build(), // not available
+				newTestPodClique("available", testutils.WithPCLQAvailable()),
+				newTestPodClique("unavailable", testutils.WithPCLQMinAvailableBreached()),
 			},
 			expectedCount: 2,
 			expected:      false,
@@ -56,7 +74,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		{
 			name: "insufficient resource count",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),
+				newTestPodClique("single-available", testutils.WithPCLQAvailable()),
 			},
 			expectedCount: 2,
 			expected:      false,
@@ -64,9 +82,10 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		{
 			name: "terminating resources ignored",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),                                  // available
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable(), testutils.WithPCLQTerminating()).Build(), // terminating, ignored
-				testutils.NewPodCliqueBuilder("pclq-3", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),                                  // available
+				newTestPodClique("available-1", testutils.WithPCLQAvailable()),
+				newTestPodClique("terminating",
+					testutils.WithPCLQAvailable(), testutils.WithPCLQTerminating()),
+				newTestPodClique("available-2", testutils.WithPCLQAvailable()),
 			},
 			expectedCount: 2,
 			expected:      true,
@@ -74,8 +93,9 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		{
 			name: "insufficient after filtering terminating",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),                                  // available
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable(), testutils.WithPCLQTerminating()).Build(), // terminating, ignored
+				newTestPodClique("available", testutils.WithPCLQAvailable()),
+				newTestPodClique("terminating",
+					testutils.WithPCLQAvailable(), testutils.WithPCLQTerminating()),
 			},
 			expectedCount: 2,
 			expected:      false,
@@ -89,7 +109,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		{
 			name: "zero expected count",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQAvailable()).Build(),
+				newTestPodClique("any-resource", testutils.WithPCLQAvailable()),
 			},
 			expectedCount: 0,
 			expected:      true,
@@ -104,7 +124,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 				tt.expectedCount,
 				GetPCLQCondition,
 				grovecorev1alpha1.PodCliqueKind,
-				0, // replica index
+				testReplicaIndex,
 			)
 			if result != tt.expected {
 				t.Errorf("ValidateReplicaAvailable() = %v, want %v", result, tt.expected)
@@ -143,7 +163,7 @@ func TestValidateReplicaScheduled(t *testing.T) {
 		{
 			name: "insufficient resource count",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+				newTestPodClique("single-scheduled", testutils.WithPCLQScheduledAndAvailable()),
 			},
 			expectedCount: 2,
 			expected:      false,
@@ -151,9 +171,10 @@ func TestValidateReplicaScheduled(t *testing.T) {
 		{
 			name: "terminating resources ignored for scheduling",
 			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),                                  // scheduled
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable(), testutils.WithPCLQTerminating()).Build(), // terminating, ignored
-				testutils.NewPodCliqueBuilder("pclq-3", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),                                  // scheduled
+				newTestPodClique("scheduled-1", testutils.WithPCLQScheduledAndAvailable()),
+				newTestPodClique("terminating-scheduled",
+					testutils.WithPCLQScheduledAndAvailable(), testutils.WithPCLQTerminating()),
+				newTestPodClique("scheduled-2", testutils.WithPCLQScheduledAndAvailable()),
 			},
 			expectedCount: 2,
 			expected:      true,
@@ -168,7 +189,7 @@ func TestValidateReplicaScheduled(t *testing.T) {
 				tt.expectedCount,
 				GetPCLQCondition,
 				grovecorev1alpha1.PodCliqueKind,
-				0, // replica index
+				testReplicaIndex,
 			)
 			if result != tt.expected {
 				t.Errorf("ValidateReplicaScheduled() = %v, want %v", result, tt.expected)
@@ -190,8 +211,8 @@ func TestValidateReplicaState_WithPCSG(t *testing.T) {
 		{
 			name: "PCSG resources available",
 			resources: []*grovecorev1alpha1.PodCliqueScalingGroup{
-				testutils.NewPCSGBuilder("pcsg-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCSGHealthy()).Build(),
-				testutils.NewPCSGBuilder("pcsg-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCSGHealthy()).Build(),
+				newTestPCSG("healthy-1", testutils.WithPCSGHealthy()),
+				newTestPCSG("healthy-2", testutils.WithPCSGHealthy()),
 			},
 			expectedCount: 2,
 			stateFunc:     IsAvailable,
@@ -200,8 +221,8 @@ func TestValidateReplicaState_WithPCSG(t *testing.T) {
 		{
 			name: "PCSG resources scheduled",
 			resources: []*grovecorev1alpha1.PodCliqueScalingGroup{
-				testutils.NewPCSGBuilder("pcsg-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCSGHealthy()).Build(),
-				testutils.NewPCSGBuilder("pcsg-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCSGMinAvailableBreached()).Build(), // not scheduled but breached
+				newTestPCSG("healthy", testutils.WithPCSGHealthy()),
+				newTestPCSG("breached", testutils.WithPCSGMinAvailableBreached()),
 			},
 			expectedCount: 2,
 			stateFunc:     IsScheduled,
@@ -218,7 +239,7 @@ func TestValidateReplicaState_WithPCSG(t *testing.T) {
 				GetPCSGCondition,
 				tt.stateFunc,
 				grovecorev1alpha1.PodCliqueScalingGroupKind,
-				0, // replica index
+				testReplicaIndex,
 			)
 			if result != tt.expected {
 				t.Errorf("validateReplicaState() = %v, want %v", result, tt.expected)
