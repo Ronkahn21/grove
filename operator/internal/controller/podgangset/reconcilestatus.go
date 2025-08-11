@@ -26,7 +26,6 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/status"
 
 	"github.com/go-logr/logr"
-	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -110,38 +109,22 @@ func (r *Reconciler) computeExpectedResourceCounts(pgs *grovecorev1alpha1.PodGan
 }
 
 func (r *Reconciler) checkPGSReplicaAvailability(logger logr.Logger, pgs *grovecorev1alpha1.PodGangSet, replicaIndex int, replicaPCSGs []grovecorev1alpha1.PodCliqueScalingGroup, standalonePCLQs []grovecorev1alpha1.PodClique, expectedPCSGs int, expectedStandalonePCLQs int) bool {
-	if !r.isPGSReplicaPCLAsAvailable(logger, expectedStandalonePCLQs, replicaIndex, standalonePCLQs) {
+	if !status.ValidateReplicaAvailable(
+		logger, standalonePCLQs, expectedStandalonePCLQs,
+		status.GetPCLQCondition,
+		grovecorev1alpha1.PodCliqueKind, replicaIndex,
+	) {
 		return false
 	}
 
-	if !r.checkPCSGsAvailability(logger, expectedPCSGs, replicaIndex, replicaPCSGs) {
+	if !status.ValidateReplicaAvailable(
+		logger, replicaPCSGs, expectedPCSGs,
+		status.GetPCSGCondition,
+		grovecorev1alpha1.PodCliqueScalingGroupKind, replicaIndex,
+	) {
 		return false
 	}
 
 	logger.Info("PGS replica is available", "pgs", client.ObjectKeyFromObject(pgs), "replicaIndex", replicaIndex)
 	return true
-}
-
-func (r *Reconciler) isPGSReplicaPCLAsAvailable(logger logr.Logger, expectedStandalonePCLQs, replicaIndex int, pclqs []grovecorev1alpha1.PodClique) bool {
-	// Convert to pointers for client.Object interface
-	pclqPointers := lo.Map(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) *grovecorev1alpha1.PodClique {
-		return &pclq
-	})
-	return status.ValidateReplicaAvailable(
-		logger, pclqPointers, expectedStandalonePCLQs,
-		status.GetPCLQCondition,
-		grovecorev1alpha1.PodCliqueKind, replicaIndex,
-	)
-}
-
-func (r *Reconciler) checkPCSGsAvailability(logger logr.Logger, expectedPCSGs, replicaIndex int, pcsgs []grovecorev1alpha1.PodCliqueScalingGroup) bool {
-	// Convert to pointers for client.Object interface
-	pcsgPointers := lo.Map(pcsgs, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup, _ int) *grovecorev1alpha1.PodCliqueScalingGroup {
-		return &pcsg
-	})
-	return status.ValidateReplicaAvailable(
-		logger, pcsgPointers, expectedPCSGs,
-		status.GetPCSGCondition,
-		grovecorev1alpha1.PodCliqueScalingGroupKind, replicaIndex,
-	)
 }

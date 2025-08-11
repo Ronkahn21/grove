@@ -34,11 +34,11 @@ func IsAvailable(conditions []metav1.Condition) bool {
 }
 
 // GetPCLQCondition extracts conditions from PodClique
-func GetPCLQCondition(pclq *grovecorev1alpha1.PodClique) []metav1.Condition {
+func GetPCLQCondition(pclq grovecorev1alpha1.PodClique) []metav1.Condition {
 	return pclq.Status.Conditions
 }
 
 // GetPCSGCondition extracts conditions from PodCliqueScalingGroup
-func GetPCSGCondition(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) []metav1.Condition {
+func GetPCSGCondition(pcsg grovecorev1alpha1.PodCliqueScalingGroup) []metav1.Condition {
 	return pcsg.Status.Conditions
 }

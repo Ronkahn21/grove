@@ -32,14 +32,14 @@ const (
 	testReplicaIndex = 0
 )
 
-func newTestPodClique(name string, opts ...testutils.PCLQOption) *grovecorev1alpha1.PodClique {
-	return testutils.NewPodCliqueBuilder(name, testNamespace, testPGSName, testReplicaIndex).
+func newTestPodClique(name string, opts ...testutils.PCLQOption) grovecorev1alpha1.PodClique {
+	return *testutils.NewPodCliqueBuilder(name, testNamespace, testPGSName, testReplicaIndex).
 		WithOptions(opts...).
 		Build()
 }
 
-func newTestPCSG(name string, opts ...testutils.PCSGOption) *grovecorev1alpha1.PodCliqueScalingGroup {
-	return testutils.NewPCSGBuilder(name, testNamespace, testPGSName, testReplicaIndex).
+func newTestPCSG(name string, opts ...testutils.PCSGOption) grovecorev1alpha1.PodCliqueScalingGroup {
+	return *testutils.NewPCSGBuilder(name, testNamespace, testPGSName, testReplicaIndex).
 		WithOptions(opts...).
 		Build()
 }
@@ -49,13 +49,13 @@ func TestValidateReplicaAvailable(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		resources     []*grovecorev1alpha1.PodClique
+		resources     []grovecorev1alpha1.PodClique
 		expectedCount int
 		expected      bool
 	}{
 		{
 			name: "all resources available",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("available-1", testutils.WithPCLQAvailable()),
 				newTestPodClique("available-2", testutils.WithPCLQAvailable()),
 			},
@@ -64,7 +64,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		},
 		{
 			name: "some resources unavailable",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("available", testutils.WithPCLQAvailable()),
 				newTestPodClique("unavailable", testutils.WithPCLQMinAvailableBreached()),
 			},
@@ -73,7 +73,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		},
 		{
 			name: "insufficient resource count",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("single-available", testutils.WithPCLQAvailable()),
 			},
 			expectedCount: 2,
@@ -81,7 +81,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		},
 		{
 			name: "terminating resources ignored",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("available-1", testutils.WithPCLQAvailable()),
 				newTestPodClique("terminating",
 					testutils.WithPCLQAvailable(), testutils.WithPCLQTerminating()),
@@ -92,7 +92,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		},
 		{
 			name: "insufficient after filtering terminating",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("available", testutils.WithPCLQAvailable()),
 				newTestPodClique("terminating",
 					testutils.WithPCLQAvailable(), testutils.WithPCLQTerminating()),
@@ -102,13 +102,13 @@ func TestValidateReplicaAvailable(t *testing.T) {
 		},
 		{
 			name:          "empty resources",
-			resources:     []*grovecorev1alpha1.PodClique{},
+			resources:     []grovecorev1alpha1.PodClique{},
 			expectedCount: 1,
 			expected:      false,
 		},
 		{
 			name: "zero expected count",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("any-resource", testutils.WithPCLQAvailable()),
 			},
 			expectedCount: 0,
@@ -118,7 +118,7 @@ func TestValidateReplicaAvailable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ValidateReplicaAvailable(
+			result := ValidateReplicaAvailable[grovecorev1alpha1.PodClique](
 				logger,
 				tt.resources,
 				tt.expectedCount,
@@ -138,31 +138,31 @@ func TestValidateReplicaScheduled(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		resources     []*grovecorev1alpha1.PodClique
+		resources     []grovecorev1alpha1.PodClique
 		expectedCount int
 		expected      bool
 	}{
 		{
 			name: "all resources scheduled",
-			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+			resources: []grovecorev1alpha1.PodClique{
+				*testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+				*testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 			},
 			expectedCount: 2,
 			expected:      true,
 		},
 		{
 			name: "some resources not scheduled",
-			resources: []*grovecorev1alpha1.PodClique{
-				testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(), // scheduled
-				testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQNotScheduled()).Build(),          // not scheduled
+			resources: []grovecorev1alpha1.PodClique{
+				*testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(), // scheduled
+				*testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQNotScheduled()).Build(),          // not scheduled
 			},
 			expectedCount: 2,
 			expected:      false,
 		},
 		{
 			name: "insufficient resource count",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("single-scheduled", testutils.WithPCLQScheduledAndAvailable()),
 			},
 			expectedCount: 2,
@@ -170,7 +170,7 @@ func TestValidateReplicaScheduled(t *testing.T) {
 		},
 		{
 			name: "terminating resources ignored for scheduling",
-			resources: []*grovecorev1alpha1.PodClique{
+			resources: []grovecorev1alpha1.PodClique{
 				newTestPodClique("scheduled-1", testutils.WithPCLQScheduledAndAvailable()),
 				newTestPodClique("terminating-scheduled",
 					testutils.WithPCLQScheduledAndAvailable(), testutils.WithPCLQTerminating()),
@@ -203,14 +203,14 @@ func TestValidateReplicaState_WithPCSG(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		resources     []*grovecorev1alpha1.PodCliqueScalingGroup
+		resources     []grovecorev1alpha1.PodCliqueScalingGroup
 		expectedCount int
 		stateFunc     func([]metav1.Condition) bool
 		expected      bool
 	}{
 		{
 			name: "PCSG resources available",
-			resources: []*grovecorev1alpha1.PodCliqueScalingGroup{
+			resources: []grovecorev1alpha1.PodCliqueScalingGroup{
 				newTestPCSG("healthy-1", testutils.WithPCSGHealthy()),
 				newTestPCSG("healthy-2", testutils.WithPCSGHealthy()),
 			},
@@ -220,7 +220,7 @@ func TestValidateReplicaState_WithPCSG(t *testing.T) {
 		},
 		{
 			name: "PCSG resources scheduled",
-			resources: []*grovecorev1alpha1.PodCliqueScalingGroup{
+			resources: []grovecorev1alpha1.PodCliqueScalingGroup{
 				newTestPCSG("healthy", testutils.WithPCSGHealthy()),
 				newTestPCSG("breached", testutils.WithPCSGMinAvailableBreached()),
 			},
