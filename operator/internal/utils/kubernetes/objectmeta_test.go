@@ -34,26 +34,11 @@ const (
 )
 
 // Test helper functions
-func newTestObjectMeta(name, namespace string) metav1.ObjectMeta {
-	return metav1.ObjectMeta{
-		Name:      name,
-		Namespace: namespace,
-	}
-}
-
 func newTestObjectMetaWithOwnerRefs(name, namespace string, ownerRefs ...metav1.OwnerReference) metav1.ObjectMeta {
 	return metav1.ObjectMeta{
 		Name:            name,
 		Namespace:       namespace,
 		OwnerReferences: ownerRefs,
-	}
-}
-
-func newTestObjectMetaWithDeletionTimestamp(name, namespace string, timestamp *metav1.Time) metav1.ObjectMeta {
-	return metav1.ObjectMeta{
-		Name:              name,
-		Namespace:         namespace,
-		DeletionTimestamp: timestamp,
 	}
 }
 
@@ -188,8 +173,11 @@ func TestGetFirstOwnerName(t *testing.T) {
 			expectedName: "",
 		},
 		{
-			description:  "should return empty string when owner references is nil",
-			resourceMeta: newTestObjectMeta(testResourceName, testNamespace),
+			description: "should return empty string when owner references is nil",
+			resourceMeta: metav1.ObjectMeta{
+				Name:      testResourceName,
+				Namespace: testNamespace,
+			},
 			expectedName: "",
 		},
 	}
@@ -210,7 +198,10 @@ func TestGetObjectKeyFromObjectMeta(t *testing.T) {
 	}{
 		{
 			description: "should create object key with namespace and name",
-			objMeta:     newTestObjectMeta(testResourceName, testNamespace),
+			objMeta: metav1.ObjectMeta{
+				Name:      testResourceName,
+				Namespace: testNamespace,
+			},
 			expectedKey: client.ObjectKey{
 				Name:      testResourceName,
 				Namespace: testNamespace,
@@ -218,7 +209,10 @@ func TestGetObjectKeyFromObjectMeta(t *testing.T) {
 		},
 		{
 			description: "should create object key with empty namespace for cluster-scoped resources",
-			objMeta:     newTestObjectMeta("test-cluster-resource", ""),
+			objMeta: metav1.ObjectMeta{
+				Name:      "test-cluster-resource",
+				Namespace: "",
+			},
 			expectedKey: client.ObjectKey{
 				Name:      "test-cluster-resource",
 				Namespace: "",
@@ -226,7 +220,10 @@ func TestGetObjectKeyFromObjectMeta(t *testing.T) {
 		},
 		{
 			description: "should create object key with empty name",
-			objMeta:     newTestObjectMeta("", testNamespace),
+			objMeta: metav1.ObjectMeta{
+				Name:      "",
+				Namespace: testNamespace,
+			},
 			expectedKey: client.ObjectKey{
 				Name:      "",
 				Namespace: testNamespace,
@@ -234,7 +231,10 @@ func TestGetObjectKeyFromObjectMeta(t *testing.T) {
 		},
 		{
 			description: "should create object key with both empty namespace and name",
-			objMeta:     newTestObjectMeta("", ""),
+			objMeta: metav1.ObjectMeta{
+				Name:      "",
+				Namespace: "",
+			},
 			expectedKey: client.ObjectKey{
 				Name:      "",
 				Namespace: "",
@@ -280,18 +280,29 @@ func TestIsResourceTerminating(t *testing.T) {
 		expectedResult bool
 	}{
 		{
-			description:    "deletion timestamp set - resource terminating",
-			objMeta:        newTestObjectMetaWithDeletionTimestamp(testResourceName, testNamespace, &now),
+			description: "deletion timestamp set - resource terminating",
+			objMeta: metav1.ObjectMeta{
+				Name:              testResourceName,
+				Namespace:         testNamespace,
+				DeletionTimestamp: &now,
+			},
 			expectedResult: true,
 		},
 		{
-			description:    "deletion timestamp nil - resource not terminating",
-			objMeta:        newTestObjectMetaWithDeletionTimestamp(testResourceName, testNamespace, nil),
+			description: "deletion timestamp nil - resource not terminating",
+			objMeta: metav1.ObjectMeta{
+				Name:              testResourceName,
+				Namespace:         testNamespace,
+				DeletionTimestamp: nil,
+			},
 			expectedResult: false,
 		},
 		{
-			description:    "no deletion timestamp - resource not terminating",
-			objMeta:        newTestObjectMeta(testResourceName, testNamespace),
+			description: "no deletion timestamp - resource not terminating",
+			objMeta: metav1.ObjectMeta{
+				Name:      testResourceName,
+				Namespace: testNamespace,
+			},
 			expectedResult: false,
 		},
 		{
