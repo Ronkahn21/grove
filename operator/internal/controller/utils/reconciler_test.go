@@ -20,19 +20,10 @@ import (
 	"errors"
 	"testing"
 
-	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 	groveerr "github.com/NVIDIA/grove/operator/internal/errors"
 
 	"github.com/stretchr/testify/assert"
 )
-
-// Test helper functions
-func newGroveError(code grovecorev1alpha1.ErrorCode, message string) error {
-	return &groveerr.GroveError{
-		Code:    code,
-		Message: message,
-	}
-}
 
 func TestShouldRequeueAfter(t *testing.T) {
 	testCases := []struct {
@@ -42,18 +33,27 @@ func TestShouldRequeueAfter(t *testing.T) {
 	}{
 		{
 			description: "should return true for GroveError with RequeueAfter code",
-			err:         newGroveError(groveerr.ErrCodeRequeueAfter, "test requeue after error"),
-			expected:    true,
+			err: &groveerr.GroveError{
+				Code:    groveerr.ErrCodeRequeueAfter,
+				Message: "test requeue after error",
+			},
+			expected: true,
 		},
 		{
 			description: "should return false for GroveError with ContinueReconcileAndRequeue code",
-			err:         newGroveError(groveerr.ErrCodeContinueReconcileAndRequeue, "test continue and requeue error"),
-			expected:    false,
+			err: &groveerr.GroveError{
+				Code:    groveerr.ErrCodeContinueReconcileAndRequeue,
+				Message: "test continue and requeue error",
+			},
+			expected: false,
 		},
 		{
 			description: "should return false for GroveError with other code",
-			err:         newGroveError("ERR_OTHER_CODE", "test other error"),
-			expected:    false,
+			err: &groveerr.GroveError{
+				Code:    "ERR_OTHER_CODE",
+				Message: "test other error",
+			},
+			expected: false,
 		},
 		{
 			description: "should return false for non-GroveError",
@@ -88,18 +88,27 @@ func TestShouldContinueReconcileAndRequeue(t *testing.T) {
 	}{
 		{
 			description: "should return true for GroveError with ContinueReconcileAndRequeue code",
-			err:         newGroveError(groveerr.ErrCodeContinueReconcileAndRequeue, "test continue and requeue error"),
-			expected:    true,
+			err: &groveerr.GroveError{
+				Code:    groveerr.ErrCodeContinueReconcileAndRequeue,
+				Message: "test continue and requeue error",
+			},
+			expected: true,
 		},
 		{
 			description: "should return false for GroveError with RequeueAfter code",
-			err:         newGroveError(groveerr.ErrCodeRequeueAfter, "test requeue after error"),
-			expected:    false,
+			err: &groveerr.GroveError{
+				Code:    groveerr.ErrCodeRequeueAfter,
+				Message: "test requeue after error",
+			},
+			expected: false,
 		},
 		{
 			description: "should return false for GroveError with other code",
-			err:         newGroveError("ERR_OTHER_CODE", "test other error"),
-			expected:    false,
+			err: &groveerr.GroveError{
+				Code:    "ERR_OTHER_CODE",
+				Message: "test other error",
+			},
+			expected: false,
 		},
 		{
 			description: "should return false for non-GroveError",
@@ -118,8 +127,11 @@ func TestShouldContinueReconcileAndRequeue(t *testing.T) {
 		},
 		{
 			description: "should return false for GroveError with unknown code",
-			err:         newGroveError("unknown-code", "test unknown code error"),
-			expected:    false,
+			err: &groveerr.GroveError{
+				Code:    "unknown-code",
+				Message: "test unknown code error",
+			},
+			expected: false,
 		},
 	}
 
