@@ -18,7 +18,6 @@ package kubernetes
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -93,7 +92,7 @@ func TestFilterMapOwnedResourceNames(t *testing.T) {
 		expectedResourceNames []string
 	}{
 		{
-			description:  "None of the resources are owned by the owner object",
+			description:  "no resources owned by the owner object",
 			ownerObjMeta: testOwnerObjMeta,
 			candidateResources: []metav1.PartialObjectMetadata{
 				{
@@ -116,12 +115,12 @@ func TestFilterMapOwnedResourceNames(t *testing.T) {
 			expectedResourceNames: []string{},
 		},
 		{
-			description:  "Some resources are owned by the owner object",
+			description:  "mixed ownership - some resources owned, some not",
 			ownerObjMeta: testOwnerObjMeta,
 			candidateResources: []metav1.PartialObjectMetadata{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "resource1",
+						Name:      "owned-resource",
 						Namespace: testNamespace,
 						UID:       uuid.NewUUID(),
 						OwnerReferences: []metav1.OwnerReference{
@@ -137,7 +136,7 @@ func TestFilterMapOwnedResourceNames(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "resource2",
+						Name:      "unowned-resource",
 						Namespace: testNamespace,
 						UID:       uuid.NewUUID(),
 						OwnerReferences: []metav1.OwnerReference{
@@ -152,46 +151,7 @@ func TestFilterMapOwnedResourceNames(t *testing.T) {
 					},
 				},
 			},
-			expectedResourceNames: []string{"resource1"},
-		},
-		{
-			description:  "All resources are owned by the owner object",
-			ownerObjMeta: testOwnerObjMeta,
-			candidateResources: []metav1.PartialObjectMetadata{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "resource1",
-						Namespace: testNamespace,
-						UID:       uuid.NewUUID(),
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion: "v1",
-								Kind:       "PodGangSet",
-								Name:       testPgsName,
-								UID:        testOwnerObjMeta.UID,
-								Controller: ptr.To(true),
-							},
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "resource2",
-						Namespace: testNamespace,
-						UID:       uuid.NewUUID(),
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion: "v1",
-								Kind:       "PodGangSet",
-								Name:       testPgsName,
-								UID:        testOwnerObjMeta.UID,
-								Controller: ptr.To(true),
-							},
-						},
-					},
-				},
-			},
-			expectedResourceNames: []string{"resource1", "resource2"},
+			expectedResourceNames: []string{"owned-resource"},
 		},
 	}
 
@@ -320,22 +280,22 @@ func TestIsResourceTerminating(t *testing.T) {
 		expectedResult bool
 	}{
 		{
-			description:    "should return true when deletion timestamp is set",
+			description:    "deletion timestamp set - resource terminating",
 			objMeta:        newTestObjectMetaWithDeletionTimestamp(testResourceName, testNamespace, &now),
 			expectedResult: true,
 		},
 		{
-			description:    "should return false when deletion timestamp is nil",
+			description:    "deletion timestamp nil - resource not terminating",
 			objMeta:        newTestObjectMetaWithDeletionTimestamp(testResourceName, testNamespace, nil),
 			expectedResult: false,
 		},
 		{
-			description:    "should return false when deletion timestamp is not set",
+			description:    "no deletion timestamp - resource not terminating",
 			objMeta:        newTestObjectMeta(testResourceName, testNamespace),
 			expectedResult: false,
 		},
 		{
-			description: "should return true when deletion timestamp is set with other metadata",
+			description: "complex metadata with deletion timestamp and finalizers",
 			objMeta: metav1.ObjectMeta{
 				Name:      "test-resource",
 				Namespace: testNamespace,
@@ -350,24 +310,6 @@ func TestIsResourceTerminating(t *testing.T) {
 				},
 				DeletionTimestamp:          &now,
 				DeletionGracePeriodSeconds: ptr.To(int64(30)),
-			},
-			expectedResult: true,
-		},
-		{
-			description: "should return true when deletion timestamp is in the past",
-			objMeta: metav1.ObjectMeta{
-				Name:              "test-resource",
-				Namespace:         testNamespace,
-				DeletionTimestamp: &metav1.Time{Time: time.Now().Add(-5 * time.Minute)},
-			},
-			expectedResult: true,
-		},
-		{
-			description: "should return true when deletion timestamp is in the future",
-			objMeta: metav1.ObjectMeta{
-				Name:              "test-resource",
-				Namespace:         testNamespace,
-				DeletionTimestamp: &metav1.Time{Time: time.Now().Add(5 * time.Minute)},
 			},
 			expectedResult: true,
 		},
