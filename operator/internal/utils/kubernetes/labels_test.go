@@ -44,13 +44,6 @@ func newTestObjectMetaWithLabels(labels map[string]string) metav1.ObjectMeta {
 	}
 }
 
-func newTestObjectMetaEmpty() metav1.ObjectMeta {
-	return metav1.ObjectMeta{
-		Name:      "test-resource",
-		Namespace: "test-ns",
-	}
-}
-
 func newTestObjectMetaNilLabels() metav1.ObjectMeta {
 	return metav1.ObjectMeta{
 		Name:      "test-resource",

@@ -25,14 +25,6 @@ import (
 )
 
 // Test helper functions
-func newCondition(condType string, status metav1.ConditionStatus, reason, message string) metav1.Condition {
-	return metav1.Condition{
-		Type:    condType,
-		Status:  status,
-		Reason:  reason,
-		Message: message,
-	}
-}
 
 func newSimpleCondition(condType string, status metav1.ConditionStatus) metav1.Condition {
 	return metav1.Condition{
