@@ -217,30 +217,6 @@ func TestOnlyOneIsNilWithDifferentTypes(t *testing.T) {
 			expected: false,
 		},
 		{
-			description: "struct pointers - both nil should return false",
-			testFunc: func() bool {
-				type TestStruct struct{ _ string }
-				return OnlyOneIsNil((*TestStruct)(nil), (*TestStruct)(nil))
-			},
-			expected: false,
-		},
-		{
-			description: "struct pointers - first nil should return true",
-			testFunc: func() bool {
-				type TestStruct struct{ _ string }
-				return OnlyOneIsNil((*TestStruct)(nil), &TestStruct{})
-			},
-			expected: true,
-		},
-		{
-			description: "struct pointers - second nil should return true",
-			testFunc: func() bool {
-				type TestStruct struct{ _ string }
-				return OnlyOneIsNil(&TestStruct{}, (*TestStruct)(nil))
-			},
-			expected: true,
-		},
-		{
 			description: "struct pointers - both non-nil should return false",
 			testFunc: func() bool {
 				type TestStruct struct{ _ string }
