@@ -39,31 +39,6 @@ func newOwnerReference(kind, name string, isController bool) metav1.OwnerReferen
 	}
 }
 
-func newLabelsWithManagedBy(managedByValue string) map[string]string {
-	return map[string]string{
-		grovecorev1alpha1.LabelManagedByKey: managedByValue,
-	}
-}
-
-func newLabelsWithManagedByAndExtras(managedByValue string, extraLabels map[string]string) map[string]string {
-	labels := newLabelsWithManagedBy(managedByValue)
-	for k, v := range extraLabels {
-		labels[k] = v
-	}
-	return labels
-}
-
-func newTestPodClique(name, namespace string, labels map[string]string, ownerRefs ...metav1.OwnerReference) *grovecorev1alpha1.PodClique {
-	return &grovecorev1alpha1.PodClique{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			Namespace:       namespace,
-			Labels:          labels,
-			OwnerReferences: ownerRefs,
-		},
-	}
-}
-
 func TestHasExpectedOwner(t *testing.T) {
 	testCases := []struct {
 		description       string
@@ -140,13 +115,17 @@ func TestIsManagedByGrove(t *testing.T) {
 	}{
 		{
 			description: "should return true when managed-by label has correct value",
-			labels:      newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-			expected:    true,
+			labels: map[string]string{
+				grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+			},
+			expected: true,
 		},
 		{
 			description: "should return false when managed-by label has incorrect value",
-			labels:      newLabelsWithManagedBy("other-operator"),
-			expected:    false,
+			labels: map[string]string{
+				grovecorev1alpha1.LabelManagedByKey: "other-operator",
+			},
+			expected: false,
 		},
 		{
 			description: "should return false when managed-by label is missing",
@@ -168,22 +147,27 @@ func TestIsManagedByGrove(t *testing.T) {
 		},
 		{
 			description: "should return true when managed-by label is correct with other labels",
-			labels: newLabelsWithManagedByAndExtras(grovecorev1alpha1.LabelManagedByValue, map[string]string{
-				"app":         "test-app",
-				"version":     "v1.0",
-				"environment": "test",
-			}),
+			labels: map[string]string{
+				grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+				"app":                               "test-app",
+				"version":                           "v1.0",
+				"environment":                       "test",
+			},
 			expected: true,
 		},
 		{
 			description: "should return false when managed-by label has empty value",
-			labels:      newLabelsWithManagedBy(""),
-			expected:    false,
+			labels: map[string]string{
+				grovecorev1alpha1.LabelManagedByKey: "",
+			},
+			expected: false,
 		},
 		{
 			description: "should return false when managed-by label has whitespace value",
-			labels:      newLabelsWithManagedBy("  "),
-			expected:    false,
+			labels: map[string]string{
+				grovecorev1alpha1.LabelManagedByKey: "  ",
+			},
+			expected: false,
 		},
 	}
 
@@ -204,45 +188,69 @@ func TestIsManagedPodClique(t *testing.T) {
 	}{
 		{
 			description: "should return true when PodClique is managed by Grove with correct owner",
-			obj: newTestPodClique(
-				"managed-pclq",
-				"test-ns",
-				newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-				newOwnerReference("PodGangSet", "test-pgs", true),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "managed-pclq",
+					Namespace: "test-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("PodGangSet", "test-pgs", true),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet"},
 			expected:           true,
 		},
 		{
 			description: "should return false when PodClique is not managed by Grove",
-			obj: newTestPodClique(
-				"unmanaged-pclq",
-				"test-ns",
-				newLabelsWithManagedBy("other-operator"),
-				newOwnerReference("PodGangSet", "test-pgs", true),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "unmanaged-pclq",
+					Namespace: "test-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: "other-operator",
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("PodGangSet", "test-pgs", true),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet"},
 			expected:           false,
 		},
 		{
 			description: "should return false when PodClique has wrong owner kind",
-			obj: newTestPodClique(
-				"wrong-owner-pclq",
-				"test-ns",
-				newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-				newOwnerReference("WrongKind", "test-wrong", true),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "wrong-owner-pclq",
+					Namespace: "test-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("WrongKind", "test-wrong", true),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet"},
 			expected:           false,
 		},
 		{
 			description: "should return true when PodClique matches one of multiple expected owner kinds",
-			obj: newTestPodClique(
-				"pcsg-owned-pclq",
-				"test-ns",
-				newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-				newOwnerReference("PodCliqueScalingGroup", "test-pcsg", true),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "pcsg-owned-pclq",
+					Namespace: "test-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("PodCliqueScalingGroup", "test-pcsg", true),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet", "PodCliqueScalingGroup"},
 			expected:           true,
 		},
@@ -252,7 +260,9 @@ func TestIsManagedPodClique(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pgs",
 					Namespace: "different-ns",
-					Labels:    newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
 					OwnerReferences: []metav1.OwnerReference{
 						newOwnerReference("PodGangSet", "test-pgs", true),
 					},
@@ -263,45 +273,65 @@ func TestIsManagedPodClique(t *testing.T) {
 		},
 		{
 			description: "should return false when PodClique has no labels",
-			obj: newTestPodClique(
-				"no-labels-pclq",
-				"test-ns",
-				nil,
-				newOwnerReference("PodGangSet", "test-pgs", true),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-labels-pclq",
+					Namespace: "test-ns",
+					Labels:    nil,
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("PodGangSet", "test-pgs", true),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet"},
 			expected:           false,
 		},
 		{
 			description: "should return false when PodClique has no owner references",
-			obj: newTestPodClique(
-				"no-owners-pclq",
-				"another-ns",
-				newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-owners-pclq",
+					Namespace: "another-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet"},
 			expected:           false,
 		},
 		{
 			description: "should return false when no expected owner kinds provided",
-			obj: newTestPodClique(
-				"no-expected-pclq",
-				"test-ns",
-				newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-				newOwnerReference("PodGangSet", "test-pgs", true),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "no-expected-pclq",
+					Namespace: "test-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("PodGangSet", "test-pgs", true),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{},
 			expected:           false,
 		},
 		{
 			description: "should return false when PodClique has multiple owners",
-			obj: newTestPodClique(
-				"multi-owners-pclq",
-				"test-ns",
-				newLabelsWithManagedBy(grovecorev1alpha1.LabelManagedByValue),
-				newOwnerReference("PodGangSet", "test-pgs", true),
-				newOwnerReference("PodCliqueScalingGroup", "test-pcsg", false),
-			),
+			obj: &grovecorev1alpha1.PodClique{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "multi-owners-pclq",
+					Namespace: "test-ns",
+					Labels: map[string]string{
+						grovecorev1alpha1.LabelManagedByKey: grovecorev1alpha1.LabelManagedByValue,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						newOwnerReference("PodGangSet", "test-pgs", true),
+						newOwnerReference("PodCliqueScalingGroup", "test-pcsg", false),
+					},
+				},
+			},
 			expectedOwnerKinds: []string{"PodGangSet"},
 			expected:           false,
 		},
