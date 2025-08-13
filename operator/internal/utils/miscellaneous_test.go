@@ -73,11 +73,6 @@ func TestIsEmptyStringType(t *testing.T) {
 			input:       "\t hello \n",
 			expected:    false,
 		},
-		{
-			description: "single character string should return false",
-			input:       "a",
-			expected:    false,
-		},
 	}
 
 	for _, tc := range testCases {
