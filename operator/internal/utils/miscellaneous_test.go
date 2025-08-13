@@ -24,6 +24,7 @@ import (
 )
 
 type CustomString string
+
 type AnotherStringType string
 
 func TestIsEmptyStringType(t *testing.T) {
