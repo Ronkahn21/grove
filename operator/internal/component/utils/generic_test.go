@@ -20,10 +20,12 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/testutils"
+	testutils "github.com/NVIDIA/grove/operator/test/utils"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestGroupByLabel(t *testing.T) {
@@ -52,9 +54,9 @@ func TestGroupByLabel(t *testing.T) {
 
 func testPodCliqueGroupByLabel(t *testing.T) {
 	pclqs := []grovecorev1alpha1.PodClique{
-		*testutils.NewPodCliqueBuilder("pclq1", "test-ns", "test-pgs", 0).Build(),
-		*testutils.NewPodCliqueBuilder("pclq2", "test-ns", "test-pgs", 1).Build(),
-		*testutils.NewPodCliqueBuilder("pclq3", "test-ns", "test-pgs", 0).Build(),
+		*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq1", "test-ns", 0).Build(),
+		*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq2", "test-ns", 1).Build(),
+		*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq3", "test-ns", 0).Build(),
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "pclq4",
@@ -72,16 +74,16 @@ func testPodCliqueGroupByLabel(t *testing.T) {
 	assert.Len(t, result["1"], 1, "replica index 1 should have 1 item")
 	assert.NotContains(t, result, "2", "should not include item without the label")
 
-	assert.Equal(t, "pclq1", result["0"][0].Name)
-	assert.Equal(t, "pclq3", result["0"][1].Name)
-	assert.Equal(t, "pclq2", result["1"][0].Name)
+	assert.Contains(t, []string{result["0"][0].Name, result["0"][1].Name}, "test-pgs-0-pclq1")
+	assert.Contains(t, []string{result["0"][0].Name, result["0"][1].Name}, "test-pgs-0-pclq3")
+	assert.Equal(t, "test-pgs-1-pclq2", result["1"][0].Name)
 }
 
 func testPCSGGroupByLabel(t *testing.T) {
 	pcsgs := []grovecorev1alpha1.PodCliqueScalingGroup{
-		*testutils.NewPCSGBuilder("pcsg1", "test-ns", "test-pgs", 0).Build(),
-		*testutils.NewPCSGBuilder("pcsg2", "test-ns", "test-pgs", 1).Build(),
-		*testutils.NewPCSGBuilder("pcsg3", "test-ns", "test-pgs", 0).Build(),
+		*testutils.NewPodCliqueScalingGroupBuilder("pcsg1", "test-ns", "test-pgs", 0).Build(),
+		*testutils.NewPodCliqueScalingGroupBuilder("pcsg2", "test-ns", "test-pgs", 1).Build(),
+		*testutils.NewPodCliqueScalingGroupBuilder("pcsg3", "test-ns", "test-pgs", 0).Build(),
 	}
 
 	result := groupByLabel(pcsgs, grovecorev1alpha1.LabelPodGangSetReplicaIndex)

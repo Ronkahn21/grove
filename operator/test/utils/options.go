@@ -14,7 +14,7 @@
 // limitations under the License.
 // */
 
-package testutils
+package utils
 
 import (
 	"time"
@@ -175,8 +175,8 @@ func WithPCLQScheduledButBreached() PCLQOption {
 	return WithPCLQMinAvailableBreached()
 }
 
-// WithPECLMinAvailableInUnknown sets the PodClique to have MinAvailableBreached=Unknown.
-func WithPECLMinAvailableInUnknown() PCLQOption {
+// WithPCLQMinAvailableInUnknown sets the PodClique to have MinAvailableBreached=Unknown.
+func WithPCLQMinAvailableInUnknown() PCLQOption {
 	return func(pclq *grovecorev1alpha1.PodClique) {
 		pclq.Status.Conditions = []metav1.Condition{
 			{

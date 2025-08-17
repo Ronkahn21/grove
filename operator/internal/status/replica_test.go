@@ -20,10 +20,12 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/testutils"
+	testutils "github.com/NVIDIA/grove/operator/test/utils"
 
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 const (
@@ -33,13 +35,13 @@ const (
 )
 
 func newTestPodClique(name string, opts ...testutils.PCLQOption) grovecorev1alpha1.PodClique {
-	return *testutils.NewPodCliqueBuilder(name, testNamespace, testPGSName, testReplicaIndex).
+	return *testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), name, testNamespace, testReplicaIndex).
 		WithOptions(opts...).
 		Build()
 }
 
 func newTestPCSG(name string, opts ...testutils.PCSGOption) grovecorev1alpha1.PodCliqueScalingGroup {
-	return *testutils.NewPCSGBuilder(name, testNamespace, testPGSName, testReplicaIndex).
+	return *testutils.NewPodCliqueScalingGroupBuilder(name, testNamespace, testPGSName, testReplicaIndex).
 		WithOptions(opts...).
 		Build()
 }
@@ -145,8 +147,8 @@ func TestValidateReplicaScheduled(t *testing.T) {
 		{
 			name: "all resources scheduled",
 			resources: []grovecorev1alpha1.PodClique{
-				*testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
-				*testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+				*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq-1", "default", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
+				*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq-2", "default", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 			},
 			expectedCount: 2,
 			expected:      true,
@@ -154,8 +156,8 @@ func TestValidateReplicaScheduled(t *testing.T) {
 		{
 			name: "some resources not scheduled",
 			resources: []grovecorev1alpha1.PodClique{
-				*testutils.NewPodCliqueBuilder("pclq-1", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(), // scheduled
-				*testutils.NewPodCliqueBuilder("pclq-2", "default", "test-pgs", 0).WithOptions(testutils.WithPCLQNotScheduled()).Build(),          // not scheduled
+				*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq-1", "default", 0).WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(), // scheduled
+				*testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), "pclq-2", "default", 0).WithOptions(testutils.WithPCLQNotScheduled()).Build(),          // not scheduled
 			},
 			expectedCount: 2,
 			expected:      false,

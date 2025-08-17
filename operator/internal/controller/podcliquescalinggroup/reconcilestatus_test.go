@@ -21,33 +21,35 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/testutils"
+	testutils "github.com/NVIDIA/grove/operator/test/utils"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Test helpers
 func buildHealthyClique(name string) grovecorev1alpha1.PodClique {
-	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+	return *testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), name, "test-ns", 0).
 		WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build()
 }
 
 func buildScheduledClique(name string) grovecorev1alpha1.PodClique {
-	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+	return *testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), name, "test-ns", 0).
 		WithOptions(testutils.WithPCLQScheduledButBreached()).Build()
 }
 
 func buildFailedClique(name string) grovecorev1alpha1.PodClique {
-	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+	return *testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), name, "test-ns", 0).
 		WithOptions(testutils.WithPCLQNotScheduled()).Build()
 }
 
 func buildTerminatingClique(name string) grovecorev1alpha1.PodClique {
-	return *testutils.NewPodCliqueBuilder(name, "test-ns", "test-pgs", 0).
+	return *testutils.NewPodCliqueBuilder("test-pgs", types.UID(uuid.NewString()), name, "test-ns", 0).
 		WithOptions(testutils.WithPCLQTerminating()).Build()
 }
 
@@ -247,11 +249,11 @@ func TestReconcileStatus(t *testing.T) {
 		{
 			name: "happy path",
 			setup: func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object) {
-				pcsg := testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+				pcsg := testutils.NewPodCliqueScalingGroupBuilder("test-pcsg", "test-ns", "test-pgs", 0).
 					WithReplicas(2).
 					WithCliqueNames([]string{"frontend", "backend"}).
 					WithOptions(testutils.WithPCSGObservedGeneration(1)).Build()
-				pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+				pgs := testutils.NewPodGangSetBuilder("test-pgs", "test-ns").Build()
 				cliques := []client.Object{
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
@@ -275,12 +277,12 @@ func TestReconcileStatus(t *testing.T) {
 		{
 			name: "mixed replica states",
 			setup: func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object) {
-				pcsg := testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+				pcsg := testutils.NewPodCliqueScalingGroupBuilder("test-pcsg", "test-ns", "test-pgs", 0).
 					WithReplicas(3).
 					WithCliqueNames([]string{"worker"}).
 					WithMinAvailable(2).
 					WithOptions(testutils.WithPCSGObservedGeneration(1)).Build()
-				pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+				pgs := testutils.NewPodGangSetBuilder("test-pgs", "test-ns").Build()
 				cliques := []client.Object{
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
@@ -301,11 +303,11 @@ func TestReconcileStatus(t *testing.T) {
 		{
 			name: "with terminating cliques",
 			setup: func() (*grovecorev1alpha1.PodCliqueScalingGroup, *grovecorev1alpha1.PodGangSet, []client.Object) {
-				pcsg := testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+				pcsg := testutils.NewPodCliqueScalingGroupBuilder("test-pcsg", "test-ns", "test-pgs", 0).
 					WithReplicas(2).
 					WithCliqueNames([]string{"frontend", "backend"}).
 					WithOptions(testutils.WithPCSGObservedGeneration(1)).Build()
-				pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+				pgs := testutils.NewPodGangSetBuilder("test-pgs", "test-ns").Build()
 				cliques := []client.Object{
 					// Replica 0: healthy
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
@@ -360,13 +362,13 @@ func TestReconcileStatus_EdgeCases(t *testing.T) {
 	}{
 		{
 			name: "zero replicas",
-			pcsg: testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+			pcsg: testutils.NewPodCliqueScalingGroupBuilder("test-pcsg", "test-ns", "test-pgs", 0).
 				WithReplicas(0).
 				WithOptions(testutils.WithPCSGObservedGeneration(1)).Build(),
 		},
 		{
 			name: "empty clique names",
-			pcsg: testutils.NewPCSGBuilder("test-pcsg", "test-ns", "test-pgs", 0).
+			pcsg: testutils.NewPodCliqueScalingGroupBuilder("test-pcsg", "test-ns", "test-pgs", 0).
 				WithReplicas(1).
 				WithCliqueNames([]string{}).
 				WithOptions(testutils.WithPCSGObservedGeneration(1)).Build(),
@@ -375,7 +377,7 @@ func TestReconcileStatus_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pgs := testutils.NewPGSBuilder("test-pgs", "test-ns").Build()
+			pgs := testutils.NewPodGangSetBuilder("test-pgs", "test-ns").Build()
 			fakeClient := testutils.SetupFakeClient(tt.pcsg, pgs)
 			reconciler := &Reconciler{client: fakeClient}
 

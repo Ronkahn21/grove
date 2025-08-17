@@ -20,9 +20,11 @@ import (
 	"testing"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/testutils"
+	testutils "github.com/NVIDIA/grove/operator/test/utils"
 
+	"github.com/google/uuid"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestIsScheduled(t *testing.T) {
@@ -180,7 +182,7 @@ func TestIsAvailable(t *testing.T) {
 }
 
 func TestGetPCLQCondition(t *testing.T) {
-	pclq := testutils.NewPodCliqueBuilder("test-pclq", testNamespace, testPGSName, testReplicaIndex).
+	pclq := testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pclq", testNamespace, testReplicaIndex).
 		WithOptions(testutils.WithPCLQAvailable()).
 		Build()
 
@@ -195,7 +197,7 @@ func TestGetPCLQCondition(t *testing.T) {
 }
 
 func TestGetPCSGCondition(t *testing.T) {
-	pcsg := testutils.NewPCSGBuilder("test-pcsg", testNamespace, testPGSName, testReplicaIndex).
+	pcsg := testutils.NewPodCliqueScalingGroupBuilder("test-pcsg", testNamespace, testPGSName, testReplicaIndex).
 		WithOptions(testutils.WithPCSGHealthy()).
 		Build()
 
