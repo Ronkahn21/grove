@@ -77,17 +77,17 @@ func GetPCLQsByNames(ctx context.Context, cl client.Client, namespace string, pc
 
 // GroupPCLQsByPodGangName filters PCLQs that have a PodGang label and groups them by the PodGang name.
 func GroupPCLQsByPodGangName(pclqs []grovecorev1alpha1.PodClique) map[string][]grovecorev1alpha1.PodClique {
-	return groupByLabel(pclqs, grovecorev1alpha1.LabelPodGang)
+	return groupPCLQsByLabel(pclqs, grovecorev1alpha1.LabelPodGang)
 }
 
 // GroupPCLQsByPCSGReplicaIndex filters PCLQs that have a PodCliqueScalingGroupReplicaIndex label and groups them by the PCSG replica.
 func GroupPCLQsByPCSGReplicaIndex(pclqs []grovecorev1alpha1.PodClique) map[string][]grovecorev1alpha1.PodClique {
-	return groupByLabel(pclqs, grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex)
+	return groupPCLQsByLabel(pclqs, grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex)
 }
 
 // GroupPCLQsByPGSReplicaIndex filters PCLQs that have a PodGangSetReplicaIndex label and groups them by the PGS replica.
 func GroupPCLQsByPGSReplicaIndex(pclqs []grovecorev1alpha1.PodClique) map[string][]grovecorev1alpha1.PodClique {
-	return groupByLabel(pclqs, grovecorev1alpha1.LabelPodGangSetReplicaIndex)
+	return groupPCLQsByLabel(pclqs, grovecorev1alpha1.LabelPodGangSetReplicaIndex)
 }
 
 // GetMinAvailableBreachedPCLQInfo filters PodCliques that have grovecorev1alpha1.ConditionTypeMinAvailableBreached set to true.
@@ -130,4 +130,16 @@ func GetPodCliqueForPGSNotInPCSG(ctx context.Context, cl client.Client, pgsObjKe
 		return nil, err
 	}
 	return pclqList.Items, nil
+}
+
+func groupPCLQsByLabel(pclqs []grovecorev1alpha1.PodClique, labelKey string) map[string][]grovecorev1alpha1.PodClique {
+	grouped := make(map[string][]grovecorev1alpha1.PodClique)
+	for _, pclq := range pclqs {
+		labelValue, exists := pclq.Labels[labelKey]
+		if !exists {
+			continue
+		}
+		grouped[labelValue] = append(grouped[labelValue], pclq)
+	}
+	return grouped
 }
