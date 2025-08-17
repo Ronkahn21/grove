@@ -157,7 +157,7 @@ func logTerminatedErroneouslyPodContainerStatus(logger logr.Logger, podObjKey cl
 // Returns true if the pod is active
 // Returns false if the pod is terminating or has failed permanently
 func IsPodActive(pod *corev1.Pod) bool {
-	return !IsResourceTerminating(pod.ObjectMeta) &&
+	return !IsResourceTerminating(&pod.ObjectMeta) &&
 		pod.Status.Phase != corev1.PodSucceeded &&
 		pod.Status.Phase != corev1.PodFailed
 }
