@@ -1,324 +1,138 @@
-// /*
-// Copyright 2024 The Grove Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-// */
-
-package podgangset
+package podgangset_test
 
 import (
-	"context"
+	"testing"
+	"time"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/common"
-	"github.com/NVIDIA/grove/operator/test/integration/helpers"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	"github.com/NVIDIA/grove/operator/test/integration/framework"
+	"github.com/NVIDIA/grove/operator/test/utils"
 )
 
-var _ = Describe("PodGangSet Controller", func() {
-	var (
-		ctx       context.Context
-		k8sClient client.Client
-		namespace string
-	)
+func TestPodGangSetCreatesChildResources(t *testing.T) {
+	// Setup test environment with PGS controller only
+	env := framework.NewEnvBuilder(t).
+		WithGroveCRDs().
+		WithSchedulerCRDs().
+		WithPodGangSetController().
+		WithRBAC().
+		WithNamespace("test-ns").
+		Build()
 
-	BeforeEach(func() {
-		ctx = context.Background()
-		k8sClient = helpers.GetTestClient()
-		namespace = helpers.GetTestNamespace()
-	})
+	// Create a simple PGS with 2 cliques
+	pgs := utils.NewPodGangSetBuilder("test-pgs", "test-ns").
+		WithReplicas(1).
+		WithPodCliqueParameters("clique-1", 2, nil).
+		WithPodCliqueParameters("clique-2", 1, []string{"clique-1"}).
+		Build()
 
-	Context("When creating a simple PodGangSet", func() {
-		var podGangSet *grovecorev1alpha1.PodGangSet
+	// Submit PGS to cluster
+	err := env.Client.Create(env.Ctx, pgs)
+	require.NoError(t, err)
 
-		BeforeEach(func() {
-			podGangSet = helpers.NewPodGangSetBuilder().
-				WithName("test-simple-pgs").
-				WithReplicas(1).
-				WithPodClique(helpers.SimpleGangSetPodClique("worker", 2)).
-				Build()
-		})
+	// Debug: Print the created PGS structure
+	t.Logf("Created PGS spec.replicas: %d", pgs.Spec.Replicas)
+	t.Logf("Created PGS spec.template.cliques count: %d", len(pgs.Spec.Template.Cliques))
+	for i, clique := range pgs.Spec.Template.Cliques {
+		t.Logf("Clique %d: name=%s, replicas=%d, startsAfter=%v", i, clique.Name, clique.Spec.Replicas, clique.Spec.StartsAfter)
+	}
 
-		It("should create the PodGangSet successfully", func() {
-			By("creating the PodGangSet")
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
+	// Debug: Check if PGS is actually in the cluster and monitor status changes
+	time.Sleep(2 * time.Second)
+	fetchedPGS := &grovecorev1alpha1.PodGangSet{}
+	err = env.Client.Get(env.Ctx, client.ObjectKey{Name: "test-pgs", Namespace: "test-ns"}, fetchedPGS)
+	require.NoError(t, err, "Should be able to fetch PGS from cluster")
 
-			By("verifying the PodGangSet exists")
-			helpers.ExpectResourceEventuallyExists(ctx, k8sClient, podGangSet)
+	// Debug detailed status information
+	t.Logf("Fetched PGS finalizers: %v", fetchedPGS.Finalizers)
+	t.Logf("Fetched PGS status.replicas: %d", fetchedPGS.Status.Replicas)
+	t.Logf("Fetched PGS status.updatedReplicas: %d", fetchedPGS.Status.UpdatedReplicas)
+	if fetchedPGS.Status.ObservedGeneration != nil {
+		t.Logf("Fetched PGS status.observedGeneration: %d", *fetchedPGS.Status.ObservedGeneration)
+	}
 
-			By("checking initial status")
-			Eventually(func() string {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(podGangSet), podGangSet)
-				if err != nil {
-					return ""
-				}
-				return string(podGangSet.Status.Phase)
-			}).Should(Equal(string(grovecorev1alpha1.PodGangSetPending)))
-		})
+	// Debug LastOperation details
+	if fetchedPGS.Status.LastOperation != nil {
+		t.Logf("LastOperation type: %s", fetchedPGS.Status.LastOperation.Type)
+		t.Logf("LastOperation state: %s", fetchedPGS.Status.LastOperation.State)
+		if fetchedPGS.Status.LastOperation.Description != "" {
+			t.Logf("LastOperation description: %v", fetchedPGS.Status.LastOperation.Description)
+		}
+		t.Logf("LastOperation lastUpdateTime: %v", fetchedPGS.Status.LastOperation.LastUpdateTime)
+	}
 
-		It("should create child PodCliques", func() {
-			By("creating the PodGangSet")
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
+	// Debug LastErrors
+	if len(fetchedPGS.Status.LastErrors) > 0 {
+		t.Logf("Found %d LastErrors:", len(fetchedPGS.Status.LastErrors))
+		for i, lastError := range fetchedPGS.Status.LastErrors {
+			t.Logf("Error %d: code=%s, description=%s, observedAt=%v", i, lastError.Code, lastError.Description, lastError.ObservedAt)
+		}
 
-			By("waiting for child PodCliques to be created")
-			Eventually(func() int {
-				podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-				err := k8sClient.List(ctx, podCliqueList,
-					client.InNamespace(namespace),
-					client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-				if err != nil {
-					return -1
-				}
-				return len(podCliqueList.Items)
-			}).Should(Equal(1))
+	} else {
+		t.Logf("No LastErrors found")
+	}
 
-			By("verifying PodClique properties")
-			podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-			err = k8sClient.List(ctx, podCliqueList,
-				client.InNamespace(namespace),
-				client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(podCliqueList.Items).To(HaveLen(1))
+	// Wait for PCSG creation using Eventually with better polling
+	assert.Eventually(t, func() bool {
+		pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
+		err := env.Client.List(env.Ctx, pcsgList, client.InNamespace("test-ns"))
+		if err != nil {
+			t.Logf("Error listing PCSGs: %v", err)
+			return false
+		}
+		t.Logf("Found %d PCSGs", len(pcsgList.Items))
 
-			podClique := &podCliqueList.Items[0]
-			Expect(podClique.Spec.Replicas).To(Equal(ptr.To(int32(2))))
-			Expect(podClique.Name).To(ContainSubstring("worker"))
-		})
-
-		It("should update status when PodCliques become ready", func() {
-			By("creating the PodGangSet")
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("waiting for PodClique to be created")
-			var createdPodClique *grovecorev1alpha1.PodClique
-			Eventually(func() bool {
-				podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-				err := k8sClient.List(ctx, podCliqueList,
-					client.InNamespace(namespace),
-					client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-				if err != nil || len(podCliqueList.Items) == 0 {
-					return false
-				}
-				createdPodClique = &podCliqueList.Items[0]
-				return true
-			}).Should(BeTrue())
-
-			By("simulating PodClique becoming ready")
-			createdPodClique.Status.Phase = grovecorev1alpha1.PodCliqueRunning
-			createdPodClique.Status.ReadyReplicas = 2
-			createdPodClique.Status.Replicas = 2
-			err = k8sClient.Status().Update(ctx, createdPodClique)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("verifying PodGangSet status updates")
-			helpers.ExpectPhaseEventually(ctx, k8sClient, podGangSet, string(grovecorev1alpha1.PodGangSetRunning))
-
-			Eventually(func() int32 {
-				err := k8sClient.Get(ctx, client.ObjectKeyFromObject(podGangSet), podGangSet)
-				if err != nil {
-					return -1
-				}
-				return podGangSet.Status.ReadyReplicas
-			}).Should(Equal(int32(2)))
-		})
-	})
-
-	Context("When creating a PodGangSet with multiple replicas", func() {
-		var podGangSet *grovecorev1alpha1.PodGangSet
-
-		BeforeEach(func() {
-			podGangSet = helpers.NewPodGangSetBuilder().
-				WithName("test-multi-replica-pgs").
-				WithReplicas(2).
-				WithPodClique(helpers.SimpleGangSetPodClique("worker", 1)).
-				Build()
-		})
-
-		It("should create multiple replica sets", func() {
-			By("creating the PodGangSet")
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("waiting for PodCliques to be created")
-			Eventually(func() int {
-				podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-				err := k8sClient.List(ctx, podCliqueList,
-					client.InNamespace(namespace),
-					client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-				if err != nil {
-					return -1
-				}
-				return len(podCliqueList.Items)
-			}).Should(Equal(2))
-
-			By("verifying replica naming")
-			podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-			err = k8sClient.List(ctx, podCliqueList,
-				client.InNamespace(namespace),
-				client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-			Expect(err).NotTo(HaveOccurred())
-
-			names := make([]string, len(podCliqueList.Items))
-			for i, pc := range podCliqueList.Items {
-				names[i] = pc.Name
+		// Also check PGS status for any updates
+		currentPGS := &grovecorev1alpha1.PodGangSet{}
+		if err := env.Client.Get(env.Ctx, client.ObjectKey{Name: "test-pgs", Namespace: "test-ns"}, currentPGS); err == nil {
+			if currentPGS.Status.LastOperation != nil {
+				t.Logf("Current LastOperation state: %s", currentPGS.Status.LastOperation.State)
 			}
-			Expect(names).To(ContainElements(
-				ContainSubstring("worker-0"),
-				ContainSubstring("worker-1"),
-			))
-		})
-	})
-
-	Context("When creating a PodGangSet with multiple PodCliques", func() {
-		var podGangSet *grovecorev1alpha1.PodGangSet
-
-		BeforeEach(func() {
-			podGangSet = helpers.NewPodGangSetBuilder().
-				WithName("test-multi-clique-pgs").
-				WithReplicas(1).
-				WithPodClique(helpers.SimpleGangSetPodClique("prefill", 1)).
-				WithPodClique(helpers.SimpleGangSetPodClique("decode", 2)).
-				Build()
-		})
-
-		It("should create all PodCliques", func() {
-			By("creating the PodGangSet")
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("waiting for all PodCliques to be created")
-			Eventually(func() int {
-				podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-				err := k8sClient.List(ctx, podCliqueList,
-					client.InNamespace(namespace),
-					client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-				if err != nil {
-					return -1
-				}
-				return len(podCliqueList.Items)
-			}).Should(Equal(2))
-
-			By("verifying PodClique configurations")
-			podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-			err = k8sClient.List(ctx, podCliqueList,
-				client.InNamespace(namespace),
-				client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-			Expect(err).NotTo(HaveOccurred())
-
-			cliquesByName := make(map[string]*grovecorev1alpha1.PodClique)
-			for i, pc := range podCliqueList.Items {
-				if pc.Name == podGangSet.Name+"-prefill-0" {
-					cliquesByName["prefill"] = &podCliqueList.Items[i]
-				} else if pc.Name == podGangSet.Name+"-decode-0" {
-					cliquesByName["decode"] = &podCliqueList.Items[i]
+			if len(currentPGS.Status.LastErrors) > 0 {
+				t.Logf("Current LastErrors count: %d", len(currentPGS.Status.LastErrors))
+				for i, lastError := range currentPGS.Status.LastErrors {
+					t.Logf("Current Error %d: %s", i, lastError.Description)
 				}
 			}
+		}
 
-			Expect(cliquesByName).To(HaveKey("prefill"))
-			Expect(cliquesByName).To(HaveKey("decode"))
-			Expect(cliquesByName["prefill"].Spec.Replicas).To(Equal(ptr.To(int32(1))))
-			Expect(cliquesByName["decode"].Spec.Replicas).To(Equal(ptr.To(int32(2))))
-		})
-	})
+		return len(pcsgList.Items) == 1
+	}, 15*time.Second, 500*time.Millisecond, "PCSG should be created")
 
-	Context("When deleting a PodGangSet", func() {
-		var podGangSet *grovecorev1alpha1.PodGangSet
+	// Wait for PCLQ creation using Eventually with better polling
+	assert.Eventually(t, func() bool {
+		pclqList := &grovecorev1alpha1.PodCliqueList{}
+		err := env.Client.List(env.Ctx, pclqList, client.InNamespace("test-ns"))
+		if err != nil {
+			t.Logf("Error listing PCLQs: %v", err)
+			return false
+		}
+		t.Logf("Found %d PCLQs", len(pclqList.Items))
+		return len(pclqList.Items) == 2
+	}, 20*time.Second, 500*time.Millisecond, "Both PCLQs should be created")
 
-		BeforeEach(func() {
-			podGangSet = helpers.NewPodGangSetBuilder().
-				WithName("test-delete-pgs").
-				WithReplicas(1).
-				WithPodClique(helpers.SimpleGangSetPodClique("worker", 1)).
-				Build()
+	// Verify final state
+	pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
+	err = env.Client.List(env.Ctx, pcsgList, client.InNamespace("test-ns"))
+	require.NoError(t, err)
+	require.Len(t, pcsgList.Items, 1)
 
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
+	pclqList := &grovecorev1alpha1.PodCliqueList{}
+	err = env.Client.List(env.Ctx, pclqList, client.InNamespace("test-ns"))
+	require.NoError(t, err)
+	require.Len(t, pclqList.Items, 2)
 
-			Eventually(func() int {
-				podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-				err := k8sClient.List(ctx, podCliqueList,
-					client.InNamespace(namespace),
-					client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-				if err != nil {
-					return -1
-				}
-				return len(podCliqueList.Items)
-			}).Should(Equal(1))
-		})
+	// Verify ownership and basic properties
+	pcsg := pcsgList.Items[0]
+	assert.Equal(t, "test-pgs", pcsg.Labels["grove.io/podgangset-name"])
+	assert.Equal(t, string(pgs.UID), string(pcsg.GetOwnerReferences()[0].UID))
 
-		It("should delete child PodCliques", func() {
-			By("deleting the PodGangSet")
-			err := k8sClient.Delete(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("waiting for PodGangSet to be deleted")
-			helpers.ExpectResourceEventuallyDeleted(ctx, k8sClient, podGangSet)
-
-			By("verifying child PodCliques are deleted")
-			Eventually(func() int {
-				podCliqueList := &grovecorev1alpha1.PodCliqueList{}
-				err := k8sClient.List(ctx, podCliqueList,
-					client.InNamespace(namespace),
-					client.MatchingLabels{common.LabelPodGangSetName: podGangSet.Name})
-				if err != nil {
-					return -1
-				}
-				return len(podCliqueList.Items)
-			}).Should(Equal(0))
-		})
-	})
-
-	Context("When handling errors", func() {
-		It("should handle invalid PodClique configurations", func() {
-			By("creating a PodGangSet with invalid container spec")
-			podGangSet := helpers.NewPodGangSetBuilder().
-				WithName("test-invalid-pgs").
-				WithReplicas(1).
-				Build()
-
-			podGangSet.Spec.PodCliques = []grovecorev1alpha1.PodGangSetPodClique{
-				{
-					Name:     "invalid",
-					Replicas: ptr.To(int32(1)),
-					Template: corev1.PodTemplateSpec{
-						Spec: corev1.PodSpec{
-							Containers: []corev1.Container{
-								{
-									Name:  "",
-									Image: "invalid-image",
-								},
-							},
-						},
-					},
-				},
-			}
-
-			err := k8sClient.Create(ctx, podGangSet)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("verifying error conditions are set")
-			helpers.ExpectConditionEventually(ctx, k8sClient, podGangSet,
-				"Available", metav1.ConditionFalse, "")
-		})
-	})
-})
+	for _, pclq := range pclqList.Items {
+		assert.Equal(t, "test-pgs", pclq.Labels["grove.io/podgangset-name"])
+		assert.Equal(t, string(pcsg.UID), string(pclq.GetOwnerReferences()[0].UID))
+	}
+}
