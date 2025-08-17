@@ -37,7 +37,7 @@ func WithPCSGHealthy() PCSGOption {
 			{
 				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
 				Status: metav1.ConditionFalse,
-				Reason: grovecorev1alpha1.ConditionReasonSufficientReadyPCSGReplicas,
+				Reason: grovecorev1alpha1.ConditionReasonSufficientAvailablePCSGReplicas,
 			},
 		}
 	}
@@ -59,7 +59,7 @@ func WithPCSGMinAvailableBreached() PCSGOption {
 			{
 				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
 				Status: metav1.ConditionTrue,
-				Reason: grovecorev1alpha1.ConditionReasonInsufficientReadyPCSGReplicas,
+				Reason: grovecorev1alpha1.ConditionReasonInsufficientAvailablePCSGReplicas,
 			},
 		}
 	}
