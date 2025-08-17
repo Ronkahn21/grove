@@ -84,6 +84,9 @@ func createEmptyPodGangSet(name, namespace string) *grovecorev1alpha1.PodGangSet
 		},
 		Spec: grovecorev1alpha1.PodGangSetSpec{
 			Replicas: 1,
+			Template: grovecorev1alpha1.PodGangSetTemplateSpec{
+				Cliques: []*grovecorev1alpha1.PodCliqueTemplateSpec{},
+			},
 		},
 	}
 }
