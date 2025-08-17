@@ -44,15 +44,6 @@ func WithPCSGHealthy() PCSGOption {
 	}
 }
 
-// WithPCSGTerminating marks the PCSG for termination with a DeletionTimestamp.
-func WithPCSGTerminating() PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		now := metav1.NewTime(time.Now())
-		pcsg.DeletionTimestamp = &now
-		pcsg.Finalizers = []string{"test-finalizer"}
-	}
-}
-
 // WithPCSGMinAvailableBreached sets the PCSG to have MinAvailableBreached=True.
 func WithPCSGMinAvailableBreached() PCSGOption {
 	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
@@ -139,19 +130,6 @@ func WithPCLQMinAvailableBreached() PCLQOption {
 	}
 }
 
-// WithPCLQScheduled sets the PodClique to be scheduled but with unknown availability.
-func WithPCLQScheduled() PCLQOption {
-	return func(pclq *grovecorev1alpha1.PodClique) {
-		pclq.Status.Conditions = []metav1.Condition{
-			{
-				Type:   grovecorev1alpha1.ConditionTypePodCliqueScheduled,
-				Status: metav1.ConditionTrue,
-				Reason: "ScheduledSuccessfully",
-			},
-		}
-	}
-}
-
 // WithPCLQNotScheduled sets the PodClique to be not scheduled.
 func WithPCLQNotScheduled() PCLQOption {
 	return func(pclq *grovecorev1alpha1.PodClique) {
@@ -175,36 +153,10 @@ func WithPCLQScheduledButBreached() PCLQOption {
 	return WithPCLQMinAvailableBreached()
 }
 
-// WithPCLQMinAvailableInUnknown sets the PodClique to have MinAvailableBreached=Unknown.
-func WithPCLQMinAvailableInUnknown() PCLQOption {
-	return func(pclq *grovecorev1alpha1.PodClique) {
-		pclq.Status.Conditions = []metav1.Condition{
-			{
-				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
-				Status: metav1.ConditionUnknown,
-				Reason: "UnknownState",
-			},
-		}
-	}
-}
-
 // WithPCLQNoConditions removes all conditions from the PodClique status.
 func WithPCLQNoConditions() PCLQOption {
 	return func(pclq *grovecorev1alpha1.PodClique) {
 		pclq.Status.Conditions = []metav1.Condition{}
-	}
-}
-
-// WithPCLQCustomCondition adds a custom condition to the PodClique status.
-func WithPCLQCustomCondition(conditionType string, status metav1.ConditionStatus, reason, message string) PCLQOption {
-	return func(pclq *grovecorev1alpha1.PodClique) {
-		condition := metav1.Condition{
-			Type:    conditionType,
-			Status:  status,
-			Reason:  reason,
-			Message: message,
-		}
-		pclq.Status.Conditions = append(pclq.Status.Conditions, condition)
 	}
 }
 
