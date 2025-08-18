@@ -25,9 +25,9 @@ import (
 	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	ctrlcommon "github.com/NVIDIA/grove/operator/internal/controller/common"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
-	"github.com/samber/lo"
 
 	"github.com/go-logr/logr"
+	"github.com/samber/lo"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

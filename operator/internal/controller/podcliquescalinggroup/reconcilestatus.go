@@ -80,7 +80,6 @@ func computeReplicaStatus(logger logr.Logger, expectedPCSGReplicaPCLQSize int, p
 
 	isAvailable = lo.EveryBy(NonTermintedPCSGReplicaIndex, func(pclq grovecorev1alpha1.PodClique) bool {
 		return k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
-
 	})
 	return isScheduled, isAvailable
 }
