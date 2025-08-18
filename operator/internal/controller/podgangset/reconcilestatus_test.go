@@ -43,9 +43,9 @@ func setupTestReconciler(pgs *grovecorev1alpha1.PodGangSet, childObjects []clien
 	return &Reconciler{client: fakeClient}
 }
 
-// assertAvailableReplicas runs the computePGSAvailableReplicas test and validates the result
+// assertAvailableReplicas runs the computeAvailableReplicas test and validates the result
 func assertAvailableReplicas(t *testing.T, reconciler *Reconciler, pgs *grovecorev1alpha1.PodGangSet, expected int32) {
-	available, err := reconciler.computePGSAvailableReplicas(
+	available, err := reconciler.computeAvailableReplicas(
 		testutils.SetupTestContext(),
 		testutils.SetupTestLogger(),
 		pgs,

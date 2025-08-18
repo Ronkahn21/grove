@@ -19,13 +19,11 @@ package podcliquescalinggroup
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 	"github.com/NVIDIA/grove/operator/internal/common"
 	componentutils "github.com/NVIDIA/grove/operator/internal/component/utils"
 	ctrlcommon "github.com/NVIDIA/grove/operator/internal/controller/common"
-	"github.com/NVIDIA/grove/operator/internal/status"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
 
 	"github.com/go-logr/logr"
@@ -65,20 +63,25 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pc
 
 // computeReplicaStatus processes a single PodCliqueScalingGroup replica and returns whether it is scheduled and available.
 func computeReplicaStatus(logger logr.Logger, expectedPCSGReplicaPCLQSize int, pcsgReplicaIndex string, pclqs []grovecorev1alpha1.PodClique) (bool, bool) {
-	replicaIndex, _ := strconv.Atoi(pcsgReplicaIndex)
+	var isAvailable, isScheduled bool
+	NonTermintedPCSGReplicaIndex := lo.Filter(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
+		return !k8sutils.IsResourceTerminating(pclq.ObjectMeta)
+	})
+	if len(NonTermintedPCSGReplicaIndex) != expectedPCSGReplicaPCLQSize {
+		logger.V(1).Info("PCSG replica does not have the expected number of PodCliques",
+			"pcsgReplicaIndex", pcsgReplicaIndex,
+			"expectedPCSGReplicaPCLQSize", expectedPCSGReplicaPCLQSize,
+			"actualPCSGReplicaPCLQSize", len(NonTermintedPCSGReplicaIndex))
+		return false, false
+	}
+	isScheduled = lo.EveryBy(NonTermintedPCSGReplicaIndex, func(pclq grovecorev1alpha1.PodClique) bool {
+		return k8sutils.IsConditionTrue(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypePodCliqueScheduled)
+	})
 
-	isScheduled := status.ValidateReplicaScheduled(
-		logger, pclqs, expectedPCSGReplicaPCLQSize,
-		status.GetPCLQCondition,
-		grovecorev1alpha1.PodCliqueKind, replicaIndex,
-	)
+	isAvailable = lo.EveryBy(NonTermintedPCSGReplicaIndex, func(pclq grovecorev1alpha1.PodClique) bool {
+		return k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
 
-	isAvailable := status.ValidateReplicaAvailable(
-		logger, pclqs, expectedPCSGReplicaPCLQSize,
-		status.GetPCLQCondition,
-		grovecorev1alpha1.PodCliqueKind, replicaIndex,
-	)
-
+	})
 	return isScheduled, isAvailable
 }
 

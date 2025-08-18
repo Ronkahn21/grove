@@ -47,7 +47,7 @@ func FindScalingGroupConfigForClique(scalingGroupConfigs []grovecorev1alpha1.Pod
 
 // GetPCSGsForPGSReplicaIndex fetches all PodCliqueScalingGroups for a PodGangSet replica index.
 func GetPCSGsForPGSReplicaIndex(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey, pgsReplicaIndex int) ([]grovecorev1alpha1.PodCliqueScalingGroup, error) {
-	pcsgList, err := getPcsgForPGS(ctx, cl, pgsObjKey, map[string]string{
+	pcsgList, err := doGetPCSGsForPGS(ctx, cl, pgsObjKey, map[string]string{
 		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(pgsReplicaIndex),
 	})
 	if err != nil {
@@ -56,14 +56,14 @@ func GetPCSGsForPGSReplicaIndex(ctx context.Context, cl client.Client, pgsObjKey
 	return pcsgList.Items, nil
 }
 
-func getPcsgForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey, extraLabels map[string]string) (*grovecorev1alpha1.PodCliqueScalingGroupList, error) {
+func doGetPCSGsForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey, matchingLabels map[string]string) (*grovecorev1alpha1.PodCliqueScalingGroupList, error) {
 	pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
 	if err := cl.List(ctx,
 		pcsgList,
 		client.InNamespace(pgsObjKey.Namespace),
 		client.MatchingLabels(lo.Assign(
 			k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsObjKey.Name),
-			extraLabels,
+			matchingLabels,
 		)),
 	); err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func getPcsgForPGS(ctx context.Context, cl client.Client, pgsObjKey client.Objec
 
 // GetPCSGsForPGS fetches all PodCliqueScalingGroups for a PodGangSet.
 func GetPCSGsForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey) ([]grovecorev1alpha1.PodCliqueScalingGroup, error) {
-	pcsgList, err := getPcsgForPGS(ctx, cl, pgsObjKey, nil)
+	pcsgList, err := doGetPCSGsForPGS(ctx, cl, pgsObjKey, nil)
 	if err != nil {
 		return nil, err
 	}
