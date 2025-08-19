@@ -10,7 +10,6 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/controller/podcliquescalinggroup"
 	"github.com/NVIDIA/grove/operator/internal/controller/podgangset"
 	grovelogger "github.com/NVIDIA/grove/operator/internal/logger"
-	grovewebhook "github.com/NVIDIA/grove/operator/internal/webhook"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
@@ -22,6 +21,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
+type WebhookRegister interface {
+	RegisterWithManager(mgr manager.Manager) error
+}
+
+type WebhookRegisterFn func(mgr manager.Manager) WebhookRegister
+
 // TestEnv represents a built and started test environment
 type TestEnv struct {
 	T          *testing.T
@@ -32,14 +37,13 @@ type TestEnv struct {
 	Objects    []client.Object
 
 	// Internal fields for lifecycle management
-	env               *envtest.Environment
-	cancel            context.CancelFunc
-	started           bool
-	namespaceConfigs  map[string]*corev1.Namespace
-	controllers       map[ControllerType]bool
-	validationWebhook bool
-	mutatingWebhook   bool
-	managerOpts       []ManagerOption
+	env              *envtest.Environment
+	cancel           context.CancelFunc
+	started          bool
+	namespaceConfigs map[string]*corev1.Namespace
+	controllers      map[ControllerType]bool
+	webhooks         []WebhookRegisterFn
+	managerOpts      []ManagerOption
 }
 
 // CreateNamespace creates an additional namespace
@@ -114,7 +118,7 @@ func (te *TestEnv) Start() error {
 
 func (te *TestEnv) requiredWebhooks() bool {
 	// Check if any webhooks are enabled
-	return te.validationWebhook || te.mutatingWebhook
+	return len(te.webhooks) > 0
 }
 
 // Shutdown stops the test environment and cleans up resources
@@ -283,10 +287,12 @@ func (te *TestEnv) startManager() error {
 
 // registerWebhooks registers webhooks with the manager
 func (te *TestEnv) registerWebhooks() error {
-	// Register webhooks - the manager already has the configured webhook server
-	if err := grovewebhook.RegisterWebhooks(te.Manager); err != nil {
-		return fmt.Errorf("failed to register webhooks: %w", err)
+	for _, webhookFn := range te.webhooks {
+		webhookHandler := webhookFn(te.Manager)
+		if err := webhookHandler.RegisterWithManager(te.Manager); err != nil {
+			return fmt.Errorf("failed to register webhook: %w", err)
+		}
+		te.T.Logf("Registered webhook: %T", webhookHandler)
 	}
-	te.T.Logf("Registered webhooks")
 	return nil
 }
