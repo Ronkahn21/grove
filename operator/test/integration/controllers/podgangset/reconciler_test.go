@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
@@ -16,19 +17,27 @@ import (
 func TestPodGangSetCreatesChildResources(t *testing.T) {
 	// Setup test environment with PGS controller only
 	env := framework.NewEnvBuilder(t).
-		WithGroveCRDs().
-		WithSchedulerCRDs().
-		WithPodGangSetController().
-		WithRBAC().
+		WithController(framework.ControllerPodGangSet).
 		WithNamespace("test-ns").
 		Build()
+
+	// Start the environment
+	env.Start()
+	defer env.Shutdown()
 
 	// Create a simple PGS with 2 cliques
 	pgs := utils.NewPodGangSetBuilder("test-pgs", "test-ns").
 		WithReplicas(1).
 		WithPodCliqueParameters("clique-1", 2, nil).
-		WithPodCliqueParameters("clique-2", 1, []string{"clique-1"}).
-		Build()
+		WithPodCliqueParameters("clique-2", 1, nil).
+		WithPodCliqueParameters("clique-3", 1, nil).
+		WithPodCliqueScalingGroupConfig(grovecorev1alpha1.PodCliqueScalingGroupConfig{
+			Name:         "new",
+			CliqueNames:  []string{"clique-3"},
+			Replicas:     ptr.To[int32](1),
+			MinAvailable: ptr.To[int32](1),
+			ScaleConfig:  nil,
+		}).Build()
 
 	// Submit PGS to cluster
 	err := env.Client.Create(env.Ctx, pgs)
@@ -53,27 +62,6 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 	t.Logf("Fetched PGS status.updatedReplicas: %d", fetchedPGS.Status.UpdatedReplicas)
 	if fetchedPGS.Status.ObservedGeneration != nil {
 		t.Logf("Fetched PGS status.observedGeneration: %d", *fetchedPGS.Status.ObservedGeneration)
-	}
-
-	// Debug LastOperation details
-	if fetchedPGS.Status.LastOperation != nil {
-		t.Logf("LastOperation type: %s", fetchedPGS.Status.LastOperation.Type)
-		t.Logf("LastOperation state: %s", fetchedPGS.Status.LastOperation.State)
-		if fetchedPGS.Status.LastOperation.Description != "" {
-			t.Logf("LastOperation description: %v", fetchedPGS.Status.LastOperation.Description)
-		}
-		t.Logf("LastOperation lastUpdateTime: %v", fetchedPGS.Status.LastOperation.LastUpdateTime)
-	}
-
-	// Debug LastErrors
-	if len(fetchedPGS.Status.LastErrors) > 0 {
-		t.Logf("Found %d LastErrors:", len(fetchedPGS.Status.LastErrors))
-		for i, lastError := range fetchedPGS.Status.LastErrors {
-			t.Logf("Error %d: code=%s, description=%s, observedAt=%v", i, lastError.Code, lastError.Description, lastError.ObservedAt)
-		}
-
-	} else {
-		t.Logf("No LastErrors found")
 	}
 
 	// Wait for PCSG creation using Eventually with better polling
@@ -128,11 +116,11 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 
 	// Verify ownership and basic properties
 	pcsg := pcsgList.Items[0]
-	assert.Equal(t, "test-pgs", pcsg.Labels["grove.io/podgangset-name"])
+	assert.Equal(t, "test-pgs", pcsg.Labels["app.kubernetes.io/part-of"])
 	assert.Equal(t, string(pgs.UID), string(pcsg.GetOwnerReferences()[0].UID))
 
 	for _, pclq := range pclqList.Items {
-		assert.Equal(t, "test-pgs", pclq.Labels["grove.io/podgangset-name"])
-		assert.Equal(t, string(pcsg.UID), string(pclq.GetOwnerReferences()[0].UID))
+		assert.Equal(t, "test-pgs", pclq.Labels["app.kubernetes.io/part-of"])
+		assert.Equal(t, string(pgs.UID), string(pclq.GetOwnerReferences()[0].UID))
 	}
 }
