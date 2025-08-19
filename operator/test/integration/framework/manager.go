@@ -8,7 +8,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-// TestManager wraps a controller-runtime manager for testing
+// TestManager wraps a controllers-runtime manager for testing
 type TestManager struct {
 	Manager manager.Manager
 	Config  *rest.Config
@@ -27,11 +27,18 @@ func CreateTestManager(cfg *rest.Config, opts ...ManagerOption) (*TestManager, e
 	}
 
 	// Create manager with test-specific options
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	managerOpts := ctrl.Options{
 		Scheme:                 options.Scheme,
 		LeaderElection:         false, // Disable leader election in tests
 		HealthProbeBindAddress: "0",   // Disable health probes in tests
-	})
+	}
+
+	// Add webhook server if provided
+	if options.WebhookServer != nil {
+		managerOpts.WebhookServer = options.WebhookServer
+	}
+
+	mgr, err := ctrl.NewManager(cfg, managerOpts)
 	if err != nil {
 		return nil, err
 	}
