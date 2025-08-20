@@ -76,7 +76,6 @@ func (es *EnvironmentSetup) StartControlPlane() error {
 
 // SetupClient creates and configures the Kubernetes client
 func (es *EnvironmentSetup) SetupClient() (client.Client, error) {
-
 	kubeClient, err := client.New(es.env.Config, client.Options{Scheme: es.env.Scheme})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create client: %w", err)

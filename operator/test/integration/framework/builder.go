@@ -91,7 +91,6 @@ func (b *EnvBuilder) WithMutationWebhook() *EnvBuilder {
 
 // withWebhook is a private helper that handles webhook configuration
 func (b *EnvBuilder) withWebhook(webhookType WebhookType) *EnvBuilder {
-
 	switch webhookType {
 	case WebhookValidation:
 		validatingConfig := b.webhookBuilder.BuildValidatingConfig()
