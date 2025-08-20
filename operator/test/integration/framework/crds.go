@@ -3,17 +3,11 @@ package framework
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	grovecrds "github.com/NVIDIA/grove/operator/api/core/v1alpha1/crds"
 	schedulercrds "github.com/NVIDIA/grove/scheduler/api/core/v1alpha1/crds"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
-)
-
-const (
-	crdReadyTimeout = 2 * time.Minute
-	crdReadyPoll    = 1 * time.Second
 )
 
 func getOperatorCRDs() ([]*apiextensionsv1.CustomResourceDefinition, error) {
