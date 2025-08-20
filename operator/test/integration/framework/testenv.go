@@ -10,10 +10,12 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/controller/podcliquescalinggroup"
 	"github.com/NVIDIA/grove/operator/internal/controller/podgangset"
 	grovelogger "github.com/NVIDIA/grove/operator/internal/logger"
+	"github.com/NVIDIA/grove/operator/internal/webhook/admission/pgs/defaulting"
+	"github.com/NVIDIA/grove/operator/internal/webhook/admission/pgs/validation"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -21,20 +23,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
+// WebhookRegister interface defines webhook handlers that can be registered with the manager
 type WebhookRegister interface {
 	RegisterWithManager(mgr manager.Manager) error
 }
 
-type WebhookRegisterFn func(mgr manager.Manager) WebhookRegister
-
 // TestEnv represents a built and started test environment
 type TestEnv struct {
-	T          *testing.T
-	Client     client.Client
-	Manager    manager.Manager
-	Ctx        context.Context
-	Namespaces []string
-	Objects    []client.Object
+	T       *testing.T
+	Client  client.Client
+	Manager manager.Manager
+	Ctx     context.Context
+	Objects []client.Object
 
 	// Internal fields for lifecycle management
 	env              *envtest.Environment
@@ -42,8 +42,12 @@ type TestEnv struct {
 	started          bool
 	namespaceConfigs map[string]*corev1.Namespace
 	controllers      map[ControllerType]bool
-	webhooks         []WebhookRegisterFn
-	managerOpts      []ManagerOption
+	webhooks         map[WebhookType]bool
+
+	// RBAC configuration
+	installRBAC    bool
+	customRBAC     []rbacv1.PolicyRule
+	serviceAccount string
 }
 
 // CreateNamespace creates an additional namespace
@@ -56,6 +60,16 @@ func (te *TestEnv) CreateNamespace(name string) (string, error) {
 
 	if err := te.Client.Create(te.Ctx, ns); err != nil {
 		return "", fmt.Errorf("failed to create namespace: %w", err)
+	}
+
+	// Install RBAC resources in the new namespace if RBAC is enabled
+	if te.installRBAC {
+		clusterRoleInstalled := true // ClusterRole/ClusterRoleBinding should already exist
+		rules := te.getRBACRules()
+		if err := te.installRBACInNamespace(name, rules, &clusterRoleInstalled); err != nil {
+			return "", fmt.Errorf("failed to install RBAC in new namespace %s: %w", name, err)
+		}
+		te.T.Logf("Installed RBAC resources in dynamically created namespace %s", name)
 	}
 
 	te.T.Cleanup(func() {
@@ -79,7 +93,7 @@ func (te *TestEnv) Start() error {
 		return err
 	}
 
-	// Create client for CRD installation and setup
+	// Create client for setup
 	kubeClient, err := te.createClient()
 	if err != nil {
 		return err
@@ -90,14 +104,20 @@ func (te *TestEnv) Start() error {
 	if err = te.createNamespaces(); err != nil {
 		return err
 	}
+
+	// Install RBAC resources in all namespaces
+	if err = te.installRBACResources(); err != nil {
+		return err
+	}
+
 	// Create and start manager if controllers or webhooks are needed
-	mgr, err := te.createManager(cfg)
+	err = te.createManager(cfg)
 	if err != nil {
 		return err
 	}
-	te.Manager = mgr
-	if len(te.controllers) > 0 {
-		if err = te.registerControllers(); err != nil {
+
+	if te.requiredControllers() > 0 {
+		if err = te.registerControllers(defaultTestOperatorConfig()); err != nil {
 			return err
 		}
 	}
@@ -110,14 +130,22 @@ func (te *TestEnv) Start() error {
 		return err
 	}
 	// Update client to use manager's client
+	// only after the manager is started
+	// to ensure cache is synced
+	// and resources are available
 	te.Client = te.Manager.GetClient()
 
 	te.started = true
 	return nil
 }
 
+func (te *TestEnv) requiredControllers() int {
+	return len(te.controllers)
+}
+
 func (te *TestEnv) requiredWebhooks() bool {
 	// Check if any webhooks are enabled
+
 	return len(te.webhooks) > 0
 }
 
@@ -173,50 +201,33 @@ func (te *TestEnv) createNamespaces() error {
 }
 
 // createManager creates the controllers manager
-func (te *TestEnv) createManager(cfg *rest.Config) (manager.Manager, error) {
-	opts := te.managerOpts
-
+func (te *TestEnv) createManager(cfg *rest.Config) error {
 	// Add webhook server configuration if webhooks are enabled
+	managerOpts := ctrl.Options{
+		Scheme:                 te.env.Scheme,
+		LeaderElection:         false, // Disable leader election in tests
+		HealthProbeBindAddress: "0",
+	}
 	if te.requiredWebhooks() {
 		webhookServer := webhook.NewServer(webhook.Options{
-			Host:    te.env.WebhookInstallOptions.LocalServingHost,
 			Port:    te.env.WebhookInstallOptions.LocalServingPort,
+			Host:    te.env.WebhookInstallOptions.LocalServingHost,
 			CertDir: te.env.WebhookInstallOptions.LocalServingCertDir,
 		})
-		opts = append(opts, WithWebhookServer(webhookServer))
-		te.T.Logf("Created webhook server: Host=%s, Port=%d, CertDir=%s",
-			te.env.WebhookInstallOptions.LocalServingHost,
-			te.env.WebhookInstallOptions.LocalServingPort,
-			te.env.WebhookInstallOptions.LocalServingCertDir)
+		te.T.Logf("Initialized webhook server with options: %+v", webhookServer)
+		managerOpts.WebhookServer = webhookServer
 	}
 
-	testMgr, err := CreateTestManager(cfg, opts...)
+	mgr, err := ctrl.NewManager(cfg, managerOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create manager: %w", err)
+		return err
 	}
-	return testMgr.Manager, nil
+	te.Manager = mgr
+	return nil
 }
 
 // registerControllers registers enabled controllers with the manager
-func (te *TestEnv) registerControllers() error {
-	operatorCfsg := &configv1alpha1.OperatorConfiguration{
-		Controllers: configv1alpha1.ControllerConfiguration{
-			PodGangSet: configv1alpha1.PodGangSetControllerConfiguration{
-				ConcurrentSyncs: ptr.To(1),
-			},
-			PodClique: configv1alpha1.PodCliqueControllerConfiguration{
-				ConcurrentSyncs: ptr.To(1),
-			},
-			PodCliqueScalingGroup: configv1alpha1.PodCliqueScalingGroupControllerConfiguration{
-				ConcurrentSyncs: ptr.To(1),
-			},
-		},
-	}
-	return te.registerSpecificControllers(operatorCfsg)
-}
-
-// registerSpecificControllers registers only the enabled controllers
-func (te *TestEnv) registerSpecificControllers(operatorCfg *configv1alpha1.OperatorConfiguration) error {
+func (te *TestEnv) registerControllers(operatorCfg *configv1alpha1.OperatorConfiguration) error {
 	for controllerType := range te.controllers {
 		switch controllerType {
 		case ControllerPodGangSet:
@@ -287,12 +298,133 @@ func (te *TestEnv) startManager() error {
 
 // registerWebhooks registers webhooks with the manager
 func (te *TestEnv) registerWebhooks() error {
-	for _, webhookFn := range te.webhooks {
-		webhookHandler := webhookFn(te.Manager)
-		if err := webhookHandler.RegisterWithManager(te.Manager); err != nil {
-			return fmt.Errorf("failed to register webhook: %w", err)
+	for webhookType := range te.webhooks {
+		switch webhookType {
+		case WebhookValidation:
+			if err := te.registerValidationWebhook(); err != nil {
+				return err
+			}
+		case WebhookMutation:
+			if err := te.registerMutationWebhook(); err != nil {
+				return err
+			}
+		default:
+			te.T.Logf("Unknown webhook requested: %s", webhookType)
 		}
-		te.T.Logf("Registered webhook: %T", webhookHandler)
 	}
 	return nil
+}
+
+// registerValidationWebhook registers validation webhooks with the manager
+func (te *TestEnv) registerValidationWebhook() error {
+	validatingWebhook := validation.NewHandler(te.Manager)
+	if err := validatingWebhook.RegisterWithManager(te.Manager); err != nil {
+		return fmt.Errorf("failed to register validation webhook: %w", err)
+	}
+	// For now, just log that it would be registered
+	te.T.Logf("Registered validation webhook")
+	return nil
+}
+
+// registerMutationWebhook registers mutation webhooks with the manager
+func (te *TestEnv) registerMutationWebhook() error {
+	defaultingWebhook := defaulting.NewHandler(te.Manager)
+	if err := defaultingWebhook.RegisterWithManager(te.Manager); err != nil {
+		return fmt.Errorf("failed to register mutation webhook: %w", err)
+	}
+	te.T.Logf("Registered mutation webhook")
+	return nil
+}
+
+// installRBACResources installs RBAC resources in all configured namespaces
+func (te *TestEnv) installRBACResources() error {
+	if !te.installRBAC {
+		return nil // RBAC installation is disabled
+	}
+
+	rules := te.getRBACRules()
+	clusterRoleInstalled := false
+
+	// Install RBAC in each namespace
+	for _, ns := range te.namespaceConfigs {
+		if err := te.installRBACInNamespace(ns.Name, rules, &clusterRoleInstalled); err != nil {
+			return fmt.Errorf("failed to install RBAC in namespace %s: %w", ns.Name, err)
+		}
+		te.T.Logf("Installed RBAC resources in namespace %s", ns.Name)
+	}
+
+	return nil
+}
+
+// installRBACInNamespace installs RBAC resources in a specific namespace
+func (te *TestEnv) installRBACInNamespace(namespace string, rules []rbacv1.PolicyRule, clusterRoleInstalled *bool) error {
+	// Install ServiceAccount in the namespace
+	if err := te.installServiceAccount(namespace); err != nil {
+		return fmt.Errorf("failed to install ServiceAccount: %w", err)
+	}
+
+	// Install ClusterRole and ClusterRoleBinding only once (they're cluster-scoped)
+	if !*clusterRoleInstalled {
+		if err := te.installClusterRole(rules); err != nil {
+			return fmt.Errorf("failed to install ClusterRole: %w", err)
+		}
+		if err := te.installClusterRoleBinding(namespace); err != nil {
+			return fmt.Errorf("failed to install ClusterRoleBinding: %w", err)
+		}
+		*clusterRoleInstalled = true
+	}
+
+	return nil
+}
+
+// installServiceAccount installs a ServiceAccount in the specified namespace
+func (te *TestEnv) installServiceAccount(namespace string) error {
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      te.serviceAccount,
+			Namespace: namespace,
+		},
+	}
+	return te.Client.Create(te.Ctx, sa)
+}
+
+// installClusterRole installs the ClusterRole
+func (te *TestEnv) installClusterRole(rules []rbacv1.PolicyRule) error {
+	cr := &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: te.serviceAccount + "-role",
+		},
+		Rules: rules,
+	}
+	return te.Client.Create(te.Ctx, cr)
+}
+
+// installClusterRoleBinding installs the ClusterRoleBinding
+func (te *TestEnv) installClusterRoleBinding(namespace string) error {
+	crb := &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: te.serviceAccount + "-binding",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      te.serviceAccount,
+				Namespace: namespace,
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     te.serviceAccount + "-role",
+		},
+	}
+	return te.Client.Create(te.Ctx, crb)
+}
+
+// getRBACRules returns the RBAC rules to use (custom or default)
+func (te *TestEnv) getRBACRules() []rbacv1.PolicyRule {
+	if len(te.customRBAC) > 0 {
+		return te.customRBAC
+	}
+	return getOperatorPolicyRules()
 }

@@ -16,17 +16,19 @@ import (
 
 func TestPodGangSetCreatesChildResources(t *testing.T) {
 	// Setup test environment with PGS controller only
-	env := framework.NewEnvBuilder(t).
+	env, err := framework.NewEnvBuilder(t).
 		WithController(framework.ControllerPodGangSet).
 		WithNamespace("test-ns").
 		Build()
-
+	require.NoError(t, err)
 	// Start the environment
-	env.Start()
+	err = env.Start()
+	require.NoError(t, err)
 	defer env.Shutdown()
 
 	// Create a simple PGS with 2 cliques
 	pgs := utils.NewPodGangSetBuilder("test-pgs", "test-ns").
+		WithMinimal().
 		WithReplicas(1).
 		WithPodCliqueParameters("clique-1", 2, nil).
 		WithPodCliqueParameters("clique-2", 1, nil).
@@ -40,7 +42,7 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 		}).Build()
 
 	// Submit PGS to cluster
-	err := env.Client.Create(env.Ctx, pgs)
+	err = env.Client.Create(env.Ctx, pgs)
 	require.NoError(t, err)
 
 	// Debug: Print the created PGS structure
@@ -100,8 +102,8 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 			return false
 		}
 		t.Logf("Found %d PCLQs", len(pclqList.Items))
-		return len(pclqList.Items) == 2
-	}, 20*time.Second, 500*time.Millisecond, "Both PCLQs should be created")
+		return len(pclqList.Items) == 3
+	}, 20*time.Second, 500*time.Millisecond, "All non-scaling-group PCLQs should be created")
 
 	// Verify final state
 	pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
@@ -112,7 +114,7 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 	pclqList := &grovecorev1alpha1.PodCliqueList{}
 	err = env.Client.List(env.Ctx, pclqList, client.InNamespace("test-ns"))
 	require.NoError(t, err)
-	require.Len(t, pclqList.Items, 2)
+	require.Len(t, pclqList.Items, 3)
 
 	// Verify ownership and basic properties
 	pcsg := pcsgList.Items[0]
