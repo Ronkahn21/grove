@@ -41,9 +41,9 @@ type EnvBuilder struct {
 	cancel context.CancelFunc
 
 	// Configuration
-	crds   []*apiextensionsv1.CustomResourceDefinition
-	scheme *runtime.Scheme
-
+	crds           []*apiextensionsv1.CustomResourceDefinition
+	scheme         *runtime.Scheme
+	webhookBuilder *WebhookConfigurationBuilder
 	// Controllers
 	controllers    map[ControllerType]bool
 	webhooks       map[WebhookType]bool
@@ -58,11 +58,12 @@ type EnvBuilder struct {
 // NewEnvBuilder creates a new environment builder with sensible defaults
 func NewEnvBuilder(t *testing.T) *EnvBuilder {
 	return &EnvBuilder{
-		t:           t,
-		scheme:      groveclient.Scheme, // Use Grove's production scheme
-		controllers: make(map[ControllerType]bool),
-		webhooks:    make(map[WebhookType]bool),
-		namespaces:  make(map[string]*corev1.Namespace),
+		t:              t,
+		scheme:         groveclient.Scheme, // Use Grove's production scheme
+		controllers:    make(map[ControllerType]bool),
+		webhooks:       make(map[WebhookType]bool),
+		namespaces:     make(map[string]*corev1.Namespace),
+		webhookBuilder: NewWebhookConfigurationBuilder(),
 	}
 }
 
@@ -90,17 +91,14 @@ func (b *EnvBuilder) WithMutationWebhook() *EnvBuilder {
 
 // withWebhook is a private helper that handles webhook configuration
 func (b *EnvBuilder) withWebhook(webhookType WebhookType) *EnvBuilder {
-	webhookBuilder := NewWebhookConfigurationBuilder()
 
 	switch webhookType {
 	case WebhookValidation:
-		validatingConfig := webhookBuilder.BuildValidatingConfig()
+		validatingConfig := b.webhookBuilder.BuildValidatingConfig()
 		b.webhookOptions.ValidatingWebhooks = append(b.webhookOptions.ValidatingWebhooks, validatingConfig)
-		b.objects = append(b.objects, validatingConfig)
 	case WebhookMutation:
-		mutatingConfig := webhookBuilder.BuildMutatingConfig()
+		mutatingConfig := b.webhookBuilder.BuildMutatingConfig()
 		b.webhookOptions.MutatingWebhooks = append(b.webhookOptions.MutatingWebhooks, mutatingConfig)
-		b.objects = append(b.objects, mutatingConfig)
 	}
 
 	b.webhooks[webhookType] = true
