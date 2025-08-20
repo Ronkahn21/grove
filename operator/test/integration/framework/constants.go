@@ -19,9 +19,6 @@ package framework
 const (
 	// DefaultWebhookTimeout is the default timeout for webhook requests
 	DefaultWebhookTimeout = 10
-	// DefaultConcurrentSyncs is the default number of concurrent syncs
-	DefaultConcurrentSyncs = 1
-
 	// PGSMutatingWebhookName is the name for PodGangSet mutating webhook
 	PGSMutatingWebhookName = "pgs.mutating.webhooks.grove.io"
 	// PGSValidatingWebhookName is the name for PodGangSet validating webhook
