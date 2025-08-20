@@ -7,11 +7,9 @@ import (
 	groveclient "github.com/NVIDIA/grove/operator/internal/client"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -34,13 +32,7 @@ type EnvBuilder struct {
 
 	// Controllers
 	controllers    map[ControllerType]bool
-	allControllers bool
 	webhooks       map[WebhookType]bool
-
-	// RBAC
-	installRBAC    bool
-	customRBAC     []rbacv1.PolicyRule
-	serviceAccount string
 	webhookOptions envtest.WebhookInstallOptions
 	// Namespaces
 	namespaces map[string]*corev1.Namespace
@@ -60,18 +52,12 @@ func NewEnvBuilder(t *testing.T) *EnvBuilder {
 		webhookOptions: envtest.WebhookInstallOptions{},
 		objects:        []client.Object{},
 		scheme:         groveclient.Scheme, // Use Grove's production scheme
-		// Enable common requirements by default
-		installGroveCRDs:     true,
-		installSchedulerCRDs: true,
-		installRBAC:          true,
-		serviceAccount:       "grove-operator-test",
 	}
 }
 
+// WithCRDs adds custom CRDs to the test environment
 func (b *EnvBuilder) WithCRDs(crds ...*apiextensionsv1.CustomResourceDefinition) *EnvBuilder {
-	for _, crd := range crds {
-		b.crds = append(b.crds, crd)
-	}
+	b.crds = append(b.crds, crds...)
 	return b
 }
 
@@ -93,35 +79,6 @@ func (b *EnvBuilder) WithValidationWebhook() *EnvBuilder {
 func (b *EnvBuilder) WithMutationWebhook() *EnvBuilder {
 	b.webhookOptions.MutatingWebhooks = append(b.webhookOptions.MutatingWebhooks, b.getPGSWebhookMutationConfig())
 	b.webhooks[WebhookMutation] = true
-	return b
-}
-
-// WithRBAC installs default RBAC resources
-func (b *EnvBuilder) WithRBAC() *EnvBuilder {
-	b.installRBAC = true
-	b.serviceAccount = "grove-operator-test"
-	return b
-}
-
-// WithServiceAccount sets a custom service account name
-func (b *EnvBuilder) WithServiceAccount(name string) *EnvBuilder {
-	b.serviceAccount = name
-	b.installRBAC = true
-	return b
-}
-
-// WithCustomRBAC adds custom RBAC rules
-func (b *EnvBuilder) WithCustomRBAC(rules ...rbacv1.PolicyRule) *EnvBuilder {
-	b.customRBAC = append(b.customRBAC, rules...)
-	b.installRBAC = true
-	return b
-}
-
-// WithoutRBAC disables RBAC installation
-func (b *EnvBuilder) WithoutRBAC() *EnvBuilder {
-	b.installRBAC = false
-	b.customRBAC = nil
-	b.serviceAccount = ""
 	return b
 }
 
@@ -192,11 +149,6 @@ func (b *EnvBuilder) Build() (*TestEnv, error) {
 		namespaceConfigs: b.namespaces,
 		controllers:      b.controllers,
 		webhooks:         b.webhooks,
-
-		// RBAC configuration
-		installRBAC:    b.installRBAC,
-		customRBAC:     b.customRBAC,
-		serviceAccount: b.serviceAccount,
 	}, nil
 }
 
@@ -231,23 +183,6 @@ func (b *EnvBuilder) getPGSWebhookMutationConfig() *admissionregistrationv1.Muta
 		}},
 	}
 	return webhookConfig
-}
-
-func getSerivceForWebhook(serviceName string) *corev1.Service {
-	return &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceName,
-			Namespace: "grove-operator-test",
-		},
-		Spec: corev1.ServiceSpec{
-			Selector: map[string]string{"app": "grove-operator-test"},
-			Ports: []corev1.ServicePort{{
-				Name:       "webhook",
-				Port:       443,
-				TargetPort: intstr.FromInt(9443),
-			}},
-		},
-	}
 }
 
 func (b *EnvBuilder) getPGSWebhookValidationConfig() *admissionregistrationv1.ValidatingWebhookConfiguration {

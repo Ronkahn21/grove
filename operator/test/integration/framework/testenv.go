@@ -13,7 +13,6 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/webhook/admission/pgs/defaulting"
 	"github.com/NVIDIA/grove/operator/internal/webhook/admission/pgs/validation"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,11 +42,6 @@ type TestEnv struct {
 	namespaceConfigs map[string]*corev1.Namespace
 	controllers      map[ControllerType]bool
 	webhooks         map[WebhookType]bool
-
-	// RBAC configuration
-	installRBAC    bool
-	customRBAC     []rbacv1.PolicyRule
-	serviceAccount string
 }
 
 // CreateNamespace creates an additional namespace
@@ -62,18 +56,8 @@ func (te *TestEnv) CreateNamespace(name string) (string, error) {
 		return "", fmt.Errorf("failed to create namespace: %w", err)
 	}
 
-	// Install RBAC resources in the new namespace if RBAC is enabled
-	if te.installRBAC {
-		clusterRoleInstalled := true // ClusterRole/ClusterRoleBinding should already exist
-		rules := te.getRBACRules()
-		if err := te.installRBACInNamespace(name, rules, &clusterRoleInstalled); err != nil {
-			return "", fmt.Errorf("failed to install RBAC in new namespace %s: %w", name, err)
-		}
-		te.T.Logf("Installed RBAC resources in dynamically created namespace %s", name)
-	}
-
 	te.T.Cleanup(func() {
-		_ = te.Client.Delete(context.Background(), ns)
+		_ = te.Client.Delete(te.Ctx, ns)
 	})
 
 	return name, nil
@@ -102,11 +86,6 @@ func (te *TestEnv) Start() error {
 
 	// Create namespaces
 	if err = te.createNamespaces(); err != nil {
-		return err
-	}
-
-	// Install RBAC resources in all namespaces
-	if err = te.installRBACResources(); err != nil {
 		return err
 	}
 
@@ -144,8 +123,6 @@ func (te *TestEnv) requiredControllers() int {
 }
 
 func (te *TestEnv) requiredWebhooks() bool {
-	// Check if any webhooks are enabled
-
 	return len(te.webhooks) > 0
 }
 
@@ -334,97 +311,4 @@ func (te *TestEnv) registerMutationWebhook() error {
 	}
 	te.T.Logf("Registered mutation webhook")
 	return nil
-}
-
-// installRBACResources installs RBAC resources in all configured namespaces
-func (te *TestEnv) installRBACResources() error {
-	if !te.installRBAC {
-		return nil // RBAC installation is disabled
-	}
-
-	rules := te.getRBACRules()
-	clusterRoleInstalled := false
-
-	// Install RBAC in each namespace
-	for _, ns := range te.namespaceConfigs {
-		if err := te.installRBACInNamespace(ns.Name, rules, &clusterRoleInstalled); err != nil {
-			return fmt.Errorf("failed to install RBAC in namespace %s: %w", ns.Name, err)
-		}
-		te.T.Logf("Installed RBAC resources in namespace %s", ns.Name)
-	}
-
-	return nil
-}
-
-// installRBACInNamespace installs RBAC resources in a specific namespace
-func (te *TestEnv) installRBACInNamespace(namespace string, rules []rbacv1.PolicyRule, clusterRoleInstalled *bool) error {
-	// Install ServiceAccount in the namespace
-	if err := te.installServiceAccount(namespace); err != nil {
-		return fmt.Errorf("failed to install ServiceAccount: %w", err)
-	}
-
-	// Install ClusterRole and ClusterRoleBinding only once (they're cluster-scoped)
-	if !*clusterRoleInstalled {
-		if err := te.installClusterRole(rules); err != nil {
-			return fmt.Errorf("failed to install ClusterRole: %w", err)
-		}
-		if err := te.installClusterRoleBinding(namespace); err != nil {
-			return fmt.Errorf("failed to install ClusterRoleBinding: %w", err)
-		}
-		*clusterRoleInstalled = true
-	}
-
-	return nil
-}
-
-// installServiceAccount installs a ServiceAccount in the specified namespace
-func (te *TestEnv) installServiceAccount(namespace string) error {
-	sa := &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      te.serviceAccount,
-			Namespace: namespace,
-		},
-	}
-	return te.Client.Create(te.Ctx, sa)
-}
-
-// installClusterRole installs the ClusterRole
-func (te *TestEnv) installClusterRole(rules []rbacv1.PolicyRule) error {
-	cr := &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: te.serviceAccount + "-role",
-		},
-		Rules: rules,
-	}
-	return te.Client.Create(te.Ctx, cr)
-}
-
-// installClusterRoleBinding installs the ClusterRoleBinding
-func (te *TestEnv) installClusterRoleBinding(namespace string) error {
-	crb := &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: te.serviceAccount + "-binding",
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Name:      te.serviceAccount,
-				Namespace: namespace,
-			},
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     te.serviceAccount + "-role",
-		},
-	}
-	return te.Client.Create(te.Ctx, crb)
-}
-
-// getRBACRules returns the RBAC rules to use (custom or default)
-func (te *TestEnv) getRBACRules() []rbacv1.PolicyRule {
-	if len(te.customRBAC) > 0 {
-		return te.customRBAC
-	}
-	return getOperatorPolicyRules()
 }
