@@ -131,11 +131,10 @@ func (es *EnvironmentSetup) CreateManager(webhooks map[WebhookType]bool, webhook
 
 // RegisterComponents registers controllers and webhooks with the manager
 func (es *EnvironmentSetup) RegisterComponents(mgr manager.Manager, controllers map[ControllerType]bool, webhooks map[WebhookType]bool) error {
-	es.t.Logf("Registering components: %d controllers, %d webhooks", len(controllers), len(webhooks))
 	operatorCfg := defaultTestOperatorConfig()
 
 	if len(controllers) > 0 {
-		es.t.Logf("Registering controllers: %v", es.getControllerNames(controllers))
+		es.t.Logf("Registering controllers: %v", getControllerNames(controllers))
 		controllerManager := NewControllerManager(mgr, controllers, operatorCfg, es.t)
 		if err := controllerManager.RegisterAll(); err != nil {
 			return err
@@ -144,7 +143,7 @@ func (es *EnvironmentSetup) RegisterComponents(mgr manager.Manager, controllers 
 	}
 
 	if len(webhooks) > 0 {
-		es.t.Logf("Registering webhooks: %v", es.getWebhookNames(webhooks))
+		es.t.Logf("Registering webhooks: %v", getWebhookNames(webhooks))
 		webhookManager := NewWebhookManager(mgr, webhooks, es.t)
 		if err := webhookManager.RegisterAll(); err != nil {
 			return err
@@ -173,7 +172,7 @@ func (es *EnvironmentSetup) StartManager(mgr manager.Manager) error {
 }
 
 // getControllerNames returns a slice of controller names for logging
-func (es *EnvironmentSetup) getControllerNames(controllers map[ControllerType]bool) []string {
+func getControllerNames(controllers map[ControllerType]bool) []string {
 	var names []string
 	for controllerType := range controllers {
 		names = append(names, string(controllerType))
@@ -182,7 +181,7 @@ func (es *EnvironmentSetup) getControllerNames(controllers map[ControllerType]bo
 }
 
 // getWebhookNames returns a slice of webhook names for logging
-func (es *EnvironmentSetup) getWebhookNames(webhooks map[WebhookType]bool) []string {
+func getWebhookNames(webhooks map[WebhookType]bool) []string {
 	var names []string
 	for webhookType := range webhooks {
 		names = append(names, string(webhookType))
