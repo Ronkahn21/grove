@@ -7,7 +7,6 @@ require (
 	github.com/NVIDIA/grove/scheduler/api v0.0.0
 	github.com/go-logr/logr v1.4.3
 	github.com/google/uuid v1.6.0
-	github.com/open-policy-agent/cert-controller v0.13.0
 	github.com/samber/lo v1.51.0
 	github.com/spf13/pflag v1.0.7
 	github.com/stretchr/testify v1.10.0
@@ -16,8 +15,8 @@ require (
 	k8s.io/apiextensions-apiserver v0.33.4
 	k8s.io/apimachinery v0.33.4
 	k8s.io/client-go v0.33.4
-	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
-	sigs.k8s.io/controller-runtime v0.21.0
+	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
+	sigs.k8s.io/controller-runtime v0.20.4
 )
 
 require (
@@ -43,14 +42,13 @@ require (
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/onsi/ginkgo/v2 v2.23.3 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/onsi/gomega v1.37.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
@@ -62,15 +60,15 @@ require (
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
-	google.golang.org/protobuf v1.36.7 // indirect
+	google.golang.org/protobuf v1.36.8 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.33.4 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250814151709-d7b6acb124c3 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.6.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
@@ -79,9 +77,4 @@ replace (
 	github.com/NVIDIA/grove/operator/api => ./api
 	github.com/NVIDIA/grove/operator/client => ./client
 	github.com/NVIDIA/grove/scheduler/api => ../scheduler/api
-
-	// These replacements are needed to ensure that only one version of sigs.k8s.io/structured-merge-diff/v4 is pulled in.
-	// DO-NOT-REMOVE these dependencies till apimachinery moves to using v6.x.y of sigs.k8s.io/structured-merge-diff.
-	github.com/google/gnostic-models => github.com/google/gnostic-models v0.6.9
-	k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff
 )
