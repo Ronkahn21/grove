@@ -32,11 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-// WebhookRegister interface defines webhook handlers that can be registered with the manager
-type WebhookRegister interface {
-	RegisterWithManager(mgr manager.Manager) error
-}
-
 // ControllerManager handles controller registration and lifecycle
 type ControllerManager struct {
 	mgr         manager.Manager

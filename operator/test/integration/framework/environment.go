@@ -18,6 +18,7 @@ package framework
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	configv1alpha1 "github.com/NVIDIA/grove/operator/api/config/v1alpha1"
@@ -135,7 +136,7 @@ func (es *EnvironmentSetup) StartManager(mgr manager.Manager) error {
 	}()
 
 	if !mgr.GetCache().WaitForCacheSync(es.ctx) {
-		return fmt.Errorf("cache sync timeout")
+		return errors.New("timed out waiting for cache to sync")
 	}
 	return nil
 }
