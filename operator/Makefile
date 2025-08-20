@@ -82,39 +82,20 @@ cover-html: test-cover
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated at coverage.html"
 
-# Run integration tests
-.PHONY: test-integration
-test-integration: $(SETUP_ENVTEST)
-	@KUBEBUILDER_ASSETS="$(shell $(SETUP_ENVTEST) use --print path)" go test ./test/integration/... -v
-
-# Run integration tests with verbose output
-.PHONY: test-integration-verbose
-test-integration-verbose: $(SETUP_ENVTEST)
-	@KUBEBUILDER_ASSETS="$(shell $(SETUP_ENVTEST) use --print path)" go test ./test/integration/... -v -ginkgo.v
-
-# Run integration tests with code coverage
-.PHONY: test-integration-cover
-test-integration-cover: $(SETUP_ENVTEST)
-	@KUBEBUILDER_ASSETS="$(shell $(SETUP_ENVTEST) use --print path)" go test ./test/integration/... -coverprofile=integration-coverage.out
 
 # Run all tests (unit + integration)
 .PHONY: test-all
-test-all: test-unit test-integration
-
+test-all: test-unit test-integration-controllers test-integration-webhooks
 # Run controller-specific integration tests
-.PHONY: test-controllers
-test-controllers: $(SETUP_ENVTEST)
+.PHONY: test-integration-controllers
+test-integration-controllers: $(SETUP_ENVTEST)
 	@KUBEBUILDER_ASSETS="$(shell $(SETUP_ENVTEST) use --print path)" go test ./test/integration/controllers/... -v
 
 # Run webhook integration tests
-.PHONY: test-webhooks
-test-webhooks: $(SETUP_ENVTEST)
+.PHONY: test-integration-webhooks
+test-integration-webhooks: $(SETUP_ENVTEST)
 	@KUBEBUILDER_ASSETS="$(shell $(SETUP_ENVTEST) use --print path)" go test ./test/integration/webhooks/... -v
 
-# Run cross-controller integration tests
-.PHONY: test-cross-controller
-test-cross-controller: $(SETUP_ENVTEST)
-	@KUBEBUILDER_ASSETS="$(shell $(SETUP_ENVTEST) use --print path)" go test ./test/integration/controllers/cross_controller/... -v
 
 # Make targets for local development and testing
 # -------------------------------------------------------------

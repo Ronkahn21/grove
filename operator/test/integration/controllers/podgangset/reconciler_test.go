@@ -61,51 +61,21 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 	err = env.Client.Create(env.Ctx, pgs)
 	require.NoError(t, err)
 
-	// Debug: Print the created PGS structure
-	t.Logf("Created PGS spec.replicas: %d", pgs.Spec.Replicas)
-	t.Logf("Created PGS spec.template.cliques count: %d", len(pgs.Spec.Template.Cliques))
-	for i, clique := range pgs.Spec.Template.Cliques {
-		t.Logf("Clique %d: name=%s, replicas=%d, startsAfter=%v", i, clique.Name, clique.Spec.Replicas, clique.Spec.StartsAfter)
-	}
-
 	// Debug: Check if PGS is actually in the cluster and monitor status changes
 	time.Sleep(2 * time.Second)
 	fetchedPGS := &grovecorev1alpha1.PodGangSet{}
 	err = env.Client.Get(env.Ctx, client.ObjectKey{Name: "test-pgs", Namespace: "test-ns"}, fetchedPGS)
 	require.NoError(t, err, "Should be able to fetch PGS from cluster")
 
-	// Debug detailed status information
-	t.Logf("Fetched PGS finalizers: %v", fetchedPGS.Finalizers)
-	t.Logf("Fetched PGS status.replicas: %d", fetchedPGS.Status.Replicas)
-	t.Logf("Fetched PGS status.updatedReplicas: %d", fetchedPGS.Status.UpdatedReplicas)
-	if fetchedPGS.Status.ObservedGeneration != nil {
-		t.Logf("Fetched PGS status.observedGeneration: %d", *fetchedPGS.Status.ObservedGeneration)
-	}
-
 	// Wait for PCSG creation using Eventually with better polling
 	assert.Eventually(t, func() bool {
 		pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
-		err := env.Client.List(env.Ctx, pcsgList, client.InNamespace("test-ns"))
+		err = env.Client.List(env.Ctx, pcsgList, client.InNamespace("test-ns"))
 		if err != nil {
 			t.Logf("Error listing PCSGs: %v", err)
 			return false
 		}
 		t.Logf("Found %d PCSGs", len(pcsgList.Items))
-
-		// Also check PGS status for any updates
-		currentPGS := &grovecorev1alpha1.PodGangSet{}
-		if err := env.Client.Get(env.Ctx, client.ObjectKey{Name: "test-pgs", Namespace: "test-ns"}, currentPGS); err == nil {
-			if currentPGS.Status.LastOperation != nil {
-				t.Logf("Current LastOperation state: %s", currentPGS.Status.LastOperation.State)
-			}
-			if len(currentPGS.Status.LastErrors) > 0 {
-				t.Logf("Current LastErrors count: %d", len(currentPGS.Status.LastErrors))
-				for i, lastError := range currentPGS.Status.LastErrors {
-					t.Logf("Current Error %d: %s", i, lastError.Description)
-				}
-			}
-		}
-
 		return len(pcsgList.Items) == 1
 	}, 15*time.Second, 500*time.Millisecond, "PCSG should be created")
 

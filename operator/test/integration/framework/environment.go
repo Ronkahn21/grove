@@ -56,7 +56,6 @@ func NewEnvironmentSetup(ctx context.Context, env *envtest.Environment, t *testi
 // InitializeLogger sets up the controllers-runtime logger
 func (es *EnvironmentSetup) InitializeLogger() {
 	ctrl.SetLogger(grovelogger.MustNewLogger(true, configv1alpha1.DebugLevel, configv1alpha1.LogFormatJSON))
-
 }
 
 // StartControlPlane starts the envtest control plane
@@ -80,7 +79,6 @@ func (es *EnvironmentSetup) SetupClient() (client.Client, error) {
 
 	kubeClient, err := client.New(es.env.Config, client.Options{Scheme: es.env.Scheme})
 	if err != nil {
-
 		return nil, fmt.Errorf("failed to create client: %w", err)
 	}
 	es.client = kubeClient
