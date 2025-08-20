@@ -19,9 +19,12 @@ package utils
 import (
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
 
+	"time"
+
 	"github.com/google/uuid"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
 // PodGangSetBuilder is a builder for PodGangSet objects.
@@ -67,6 +70,28 @@ func (b *PodGangSetBuilder) WithPodCliqueTemplateSpec(pclq *grovecorev1alpha1.Po
 // WithPodCliqueScalingGroupConfig adds a PodCliqueScalingGroupConfig to the PodGangSet.
 func (b *PodGangSetBuilder) WithPodCliqueScalingGroupConfig(config grovecorev1alpha1.PodCliqueScalingGroupConfig) *PodGangSetBuilder {
 	b.pgs.Spec.Template.PodCliqueScalingGroupConfigs = append(b.pgs.Spec.Template.PodCliqueScalingGroupConfigs, config)
+	return b
+}
+
+// WithMinimal creates a minimal valid PodGangSet that passes webhook validation.
+// Sets terminationDelay and adds a single clique with minAvailable.
+func (b *PodGangSetBuilder) WithMinimal() *PodGangSetBuilder {
+	b.WithTerminationDelay(30 * time.Second)
+	if len(b.pgs.Spec.Template.Cliques) == 0 {
+		b.WithPodCliqueParameters("default-clique", 1, nil)
+	}
+	// Ensure all cliques have minAvailable set
+	for _, clique := range b.pgs.Spec.Template.Cliques {
+		if clique.Spec.MinAvailable == nil {
+			clique.Spec.MinAvailable = ptr.To(clique.Spec.Replicas)
+		}
+	}
+	return b
+}
+
+// WithTerminationDelay sets the terminationDelay for the PodGangSet.
+func (b *PodGangSetBuilder) WithTerminationDelay(delay time.Duration) *PodGangSetBuilder {
+	b.pgs.Spec.Template.TerminationDelay = &metav1.Duration{Duration: delay}
 	return b
 }
 

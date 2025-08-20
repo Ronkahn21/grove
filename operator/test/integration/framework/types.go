@@ -32,3 +32,18 @@ const (
 func (c ControllerType) String() string {
 	return string(c)
 }
+
+// WebhookType represents the type of webhook to be registered
+type WebhookType string
+
+const (
+	// WebhookValidation represents validation webhooks
+	WebhookValidation WebhookType = "validation"
+	// WebhookMutation represents mutation webhooks
+	WebhookMutation WebhookType = "mutation"
+)
+
+// String returns the string representation of the WebhookType
+func (w WebhookType) String() string {
+	return string(w)
+}
