@@ -18,11 +18,10 @@ package framework
 
 import (
 	"context"
-	"fmt"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -45,55 +44,47 @@ type TestEnv struct {
 	webhooks         map[WebhookType]bool
 }
 
-// CreateNamespace creates an additional namespace
-func (te *TestEnv) CreateNamespace(name string) (string, error) {
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-	}
-
-	if err := te.Client.Create(te.Ctx, ns); err != nil {
-		return "", fmt.Errorf("failed to create namespace: %w", err)
-	}
-
-	te.T.Cleanup(func() {
-		_ = te.Client.Delete(te.Ctx, ns)
-	})
-
-	return name, nil
-}
-
 // Start starts the test environment and all its components
 func (te *TestEnv) Start() error {
 	if te.started {
 		return nil // Already started
 	}
 
-	envSetup := NewEnvironmentSetup(te.Ctx, te.env)
+	overallStart := time.Now()
+	te.T.Logf("=== Starting Test Environment ===")
+	te.T.Logf("Environment configuration: controllers=%v, webhooks=%v, namespaces=%d",
+		te.getControllerNames(), te.getWebhookNames(), len(te.namespaceConfigs))
 
+	envSetup := NewEnvironmentSetup(te.Ctx, te.env, te.T)
+
+	// Initialize logger
 	envSetup.InitializeLogger()
-	te.T.Logf("Initialized controllers-runtime logger with debug level")
 
+	// Start control plane
 	if err := envSetup.StartControlPlane(); err != nil {
 		return err
 	}
 
+	// Setup client
 	kubeClient, err := envSetup.SetupClient()
 	if err != nil {
 		return err
 	}
 	te.Client = kubeClient
 
-	if err := envSetup.CreateRequiredNamespaces(te.namespaceConfigs); err != nil {
+	// Create namespaces
+	if err = envSetup.CreateRequiredNamespaces(te.namespaceConfigs); err != nil {
 		return err
 	}
 
+	// Setup and start manager
 	if err := te.setupAndStartManager(envSetup); err != nil {
 		return err
 	}
 
 	te.started = true
+	overallDuration := time.Since(overallStart)
+	te.T.Logf("=== Test Environment Ready (total setup: %v) ===", overallDuration)
 	return nil
 }
 
@@ -103,37 +94,63 @@ func (te *TestEnv) Shutdown() {
 		return // already stopped or never started
 	}
 
+	te.T.Logf("=== Shutting Down Test Environment ===")
+
 	if te.cancel != nil {
 		te.cancel()
 	}
 
 	if te.env != nil {
+		te.T.Logf("Stopping envtest environment")
 		_ = te.env.Stop()
 	}
 
 	te.started = false
+	te.T.Logf("Test environment shutdown complete")
+}
+
+// getControllerNames returns a slice of enabled controller names for logging
+func (te *TestEnv) getControllerNames() []string {
+	var names []string
+	for controllerType := range te.controllers {
+		names = append(names, string(controllerType))
+	}
+	return names
+}
+
+// getWebhookNames returns a slice of enabled webhook names for logging
+func (te *TestEnv) getWebhookNames() []string {
+	var names []string
+	for webhookType := range te.webhooks {
+		names = append(names, string(webhookType))
+	}
+	return names
 }
 
 // setupAndStartManager creates, configures, and starts the manager if needed
 func (te *TestEnv) setupAndStartManager(envSetup *EnvironmentSetup) error {
-	te.T.Logf("Starting manager")
+	te.T.Logf("Creating controller manager with %d controllers and %d webhooks",
+		len(te.controllers), len(te.webhooks))
+
 	mgr, err := envSetup.CreateManager(te.webhooks, te.env.WebhookInstallOptions)
 	if err != nil {
 		return err
 	}
-	te.T.Logf("Manager created")
+	te.T.Logf("Controller manager created successfully")
 	te.Manager = mgr
 
-	te.T.Logf("registering components")
+	te.T.Logf("Registering components: controllers=%v, webhooks=%v",
+		te.getControllerNames(), te.getWebhookNames())
 	if err = envSetup.RegisterComponents(te.Manager, te.controllers, te.webhooks); err != nil {
 		return err
 	}
-	te.T.Logf("Components registered successfully")
-	te.T.Logf("Starting manager")
+	te.T.Logf("All components registered successfully")
+
+	te.T.Logf("Starting controller manager and waiting for cache sync")
 	if err := envSetup.StartManager(te.Manager); err != nil {
 		return err
 	}
-	te.T.Logf("Manager started successfully")
+	te.T.Logf("Manager started successfully, cache synced")
 	// Switch to manager's client after startup
 	te.Client = te.Manager.GetClient()
 	return nil

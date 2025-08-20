@@ -19,6 +19,8 @@ package framework
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
 
 	configv1alpha1 "github.com/NVIDIA/grove/operator/api/config/v1alpha1"
 	"github.com/NVIDIA/grove/operator/internal/controller/podclique"
@@ -37,24 +39,32 @@ type ControllerManager struct {
 	mgr         manager.Manager
 	controllers map[ControllerType]bool
 	config      *configv1alpha1.OperatorConfiguration
+	t           *testing.T
 }
 
 // NewControllerManager creates a new controller manager
-func NewControllerManager(mgr manager.Manager, controllers map[ControllerType]bool, config *configv1alpha1.OperatorConfiguration) *ControllerManager {
+func NewControllerManager(mgr manager.Manager, controllers map[ControllerType]bool, config *configv1alpha1.OperatorConfiguration, t *testing.T) *ControllerManager {
 	return &ControllerManager{
 		mgr:         mgr,
 		controllers: controllers,
 		config:      config,
+		t:           t,
 	}
 }
 
 // RegisterAll registers all configured controllers with the manager
 func (cm *ControllerManager) RegisterAll() error {
+	cm.t.Logf("Registering %d controllers", len(cm.controllers))
 	for controllerType := range cm.controllers {
+		start := time.Now()
 		if err := cm.registerController(controllerType); err != nil {
+			cm.t.Logf("ERROR: Failed to register controller %s: %v", controllerType, err)
 			return err
 		}
+		duration := time.Since(start)
+		cm.t.Logf("Controller %s registered successfully (took %v)", controllerType, duration)
 	}
+	cm.t.Logf("All controllers registered successfully")
 	return nil
 }
 
@@ -72,6 +82,7 @@ func (cm *ControllerManager) registerController(controllerType ControllerType) e
 }
 
 func (cm *ControllerManager) registerPodGangSetController() error {
+	cm.t.Logf("Creating PodGangSet reconciler with concurrency=%d", *cm.config.Controllers.PodGangSet.ConcurrentSyncs)
 	reconciler := podgangset.NewReconciler(cm.mgr, cm.config.Controllers.PodGangSet)
 	if err := reconciler.RegisterWithManager(cm.mgr); err != nil {
 		return fmt.Errorf("failed to register PodGangSet controller: %w", err)
@@ -80,6 +91,7 @@ func (cm *ControllerManager) registerPodGangSetController() error {
 }
 
 func (cm *ControllerManager) registerPodCliqueController() error {
+	cm.t.Logf("Creating PodClique reconciler with concurrency=%d", *cm.config.Controllers.PodClique.ConcurrentSyncs)
 	reconciler := podclique.NewReconciler(cm.mgr, cm.config.Controllers.PodClique)
 	if err := reconciler.RegisterWithManager(cm.mgr); err != nil {
 		return fmt.Errorf("failed to register PodClique controller: %w", err)
@@ -88,6 +100,7 @@ func (cm *ControllerManager) registerPodCliqueController() error {
 }
 
 func (cm *ControllerManager) registerScalingGroupController() error {
+	cm.t.Logf("Creating PodCliqueScalingGroup reconciler with concurrency=%d", *cm.config.Controllers.PodCliqueScalingGroup.ConcurrentSyncs)
 	reconciler := podcliquescalinggroup.NewReconciler(cm.mgr, cm.config.Controllers.PodCliqueScalingGroup)
 	if err := reconciler.RegisterWithManager(cm.mgr); err != nil {
 		return fmt.Errorf("failed to register PodCliqueScalingGroup controller: %w", err)
@@ -99,23 +112,31 @@ func (cm *ControllerManager) registerScalingGroupController() error {
 type WebhookManager struct {
 	mgr      manager.Manager
 	webhooks map[WebhookType]bool
+	t        *testing.T
 }
 
 // NewWebhookManager creates a new webhook manager
-func NewWebhookManager(mgr manager.Manager, webhooks map[WebhookType]bool) *WebhookManager {
+func NewWebhookManager(mgr manager.Manager, webhooks map[WebhookType]bool, t *testing.T) *WebhookManager {
 	return &WebhookManager{
 		mgr:      mgr,
 		webhooks: webhooks,
+		t:        t,
 	}
 }
 
 // RegisterAll registers all configured webhooks with the manager
 func (wm *WebhookManager) RegisterAll() error {
+	wm.t.Logf("Registering %d webhooks", len(wm.webhooks))
 	for webhookType := range wm.webhooks {
+		start := time.Now()
 		if err := wm.registerWebhook(webhookType); err != nil {
+			wm.t.Logf("ERROR: Failed to register webhook %s: %v", webhookType, err)
 			return err
 		}
+		duration := time.Since(start)
+		wm.t.Logf("Webhook %s registered successfully (took %v)", webhookType, duration)
 	}
+	wm.t.Logf("All webhooks registered successfully")
 	return nil
 }
 
@@ -131,6 +152,7 @@ func (wm *WebhookManager) registerWebhook(webhookType WebhookType) error {
 }
 
 func (wm *WebhookManager) registerValidationWebhook() error {
+	wm.t.Logf("Creating validation webhook handler")
 	validatingWebhook := validation.NewHandler(wm.mgr)
 	if err := validatingWebhook.RegisterWithManager(wm.mgr); err != nil {
 		return fmt.Errorf("failed to register validation webhook: %w", err)
@@ -139,6 +161,7 @@ func (wm *WebhookManager) registerValidationWebhook() error {
 }
 
 func (wm *WebhookManager) registerMutationWebhook() error {
+	wm.t.Logf("Creating mutation webhook handler")
 	defaultingWebhook := defaulting.NewHandler(wm.mgr)
 	if err := defaultingWebhook.RegisterWithManager(wm.mgr); err != nil {
 		return fmt.Errorf("failed to register mutation webhook: %w", err)
@@ -151,23 +174,27 @@ type NamespaceManager struct {
 	client     client.Client
 	ctx        context.Context
 	namespaces map[string]*corev1.Namespace
+	t          *testing.T
 }
 
 // NewNamespaceManager creates a new namespace manager
-func NewNamespaceManager(ctx context.Context, client client.Client, namespaces map[string]*corev1.Namespace) *NamespaceManager {
+func NewNamespaceManager(ctx context.Context, client client.Client, namespaces map[string]*corev1.Namespace, t *testing.T) *NamespaceManager {
 	return &NamespaceManager{
 		client:     client,
 		ctx:        ctx,
 		namespaces: namespaces,
+		t:          t,
 	}
 }
 
 // CreateAll creates all configured namespaces
 func (nm *NamespaceManager) CreateAll() error {
 	for _, ns := range nm.namespaces {
+		nm.t.Logf("Creating namespace: name=%s, labels=%v", ns.Name, ns.Labels)
 		if err := nm.client.Create(nm.ctx, ns); err != nil {
 			return fmt.Errorf("failed to create namespace %s: %w", ns.Name, err)
 		}
+		nm.t.Logf("Namespace %s created successfully", ns.Name)
 	}
 	return nil
 }
