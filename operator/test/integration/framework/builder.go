@@ -1,16 +1,32 @@
+// /*
+// Copyright 2025 The Grove Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// */
+
 package framework
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	groveclient "github.com/NVIDIA/grove/operator/internal/client"
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
@@ -25,10 +41,8 @@ type EnvBuilder struct {
 	cancel context.CancelFunc
 
 	// Configuration
-	crds                 []*apiextensionsv1.CustomResourceDefinition
-	scheme               *runtime.Scheme
-	installGroveCRDs     bool
-	installSchedulerCRDs bool
+	crds   []*apiextensionsv1.CustomResourceDefinition
+	scheme *runtime.Scheme
 
 	// Controllers
 	controllers    map[ControllerType]bool
@@ -44,14 +58,11 @@ type EnvBuilder struct {
 // NewEnvBuilder creates a new environment builder with sensible defaults
 func NewEnvBuilder(t *testing.T) *EnvBuilder {
 	return &EnvBuilder{
-		t:              t,
-		crds:           []*apiextensionsv1.CustomResourceDefinition{},
-		controllers:    make(map[ControllerType]bool),
-		webhooks:       make(map[WebhookType]bool),
-		namespaces:     make(map[string]*corev1.Namespace),
-		webhookOptions: envtest.WebhookInstallOptions{},
-		objects:        []client.Object{},
-		scheme:         groveclient.Scheme, // Use Grove's production scheme
+		t:           t,
+		scheme:      groveclient.Scheme, // Use Grove's production scheme
+		controllers: make(map[ControllerType]bool),
+		webhooks:    make(map[WebhookType]bool),
+		namespaces:  make(map[string]*corev1.Namespace),
 	}
 }
 
@@ -69,31 +80,45 @@ func (b *EnvBuilder) WithController(controllerType ControllerType) *EnvBuilder {
 
 // WithValidationWebhook enables validation webhooks
 func (b *EnvBuilder) WithValidationWebhook() *EnvBuilder {
-	b.webhookOptions.ValidatingWebhooks = append(b.webhookOptions.ValidatingWebhooks, b.getPGSWebhookValidationConfig())
-	b.objects = append(b.objects, b.getPGSWebhookValidationConfig())
-	b.webhooks[WebhookValidation] = true
-	return b
+	return b.withWebhook(WebhookValidation)
 }
 
 // WithMutationWebhook enables mutation webhooks
 func (b *EnvBuilder) WithMutationWebhook() *EnvBuilder {
-	b.webhookOptions.MutatingWebhooks = append(b.webhookOptions.MutatingWebhooks, b.getPGSWebhookMutationConfig())
-	b.webhooks[WebhookMutation] = true
+	return b.withWebhook(WebhookMutation)
+}
+
+// withWebhook is a private helper that handles webhook configuration
+func (b *EnvBuilder) withWebhook(webhookType WebhookType) *EnvBuilder {
+	webhookBuilder := NewWebhookConfigurationBuilder()
+
+	switch webhookType {
+	case WebhookValidation:
+		validatingConfig := webhookBuilder.BuildValidatingConfig()
+		b.webhookOptions.ValidatingWebhooks = append(b.webhookOptions.ValidatingWebhooks, validatingConfig)
+		b.objects = append(b.objects, validatingConfig)
+	case WebhookMutation:
+		mutatingConfig := webhookBuilder.BuildMutatingConfig()
+		b.webhookOptions.MutatingWebhooks = append(b.webhookOptions.MutatingWebhooks, mutatingConfig)
+		b.objects = append(b.objects, mutatingConfig)
+	}
+
+	b.webhooks[webhookType] = true
 	return b
 }
 
 // WithNamespace creates a namespace
 func (b *EnvBuilder) WithNamespace(name string) *EnvBuilder {
-	b.namespaces[name] = &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-	}
-	return b
+	return b.createNamespace(name, nil)
 }
 
 // WithLabeledNamespace creates a namespace with labels
 func (b *EnvBuilder) WithLabeledNamespace(name string, labels map[string]string) *EnvBuilder {
+	return b.createNamespace(name, labels)
+}
+
+// createNamespace is a private helper that creates a namespace with optional labels
+func (b *EnvBuilder) createNamespace(name string, labels map[string]string) *EnvBuilder {
 	b.namespaces[name] = &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -111,30 +136,51 @@ func (b *EnvBuilder) WithObjects(objs ...client.Object) *EnvBuilder {
 
 // Build creates the test environment but does not start it
 func (b *EnvBuilder) Build() (*TestEnv, error) {
-	// Create context
 	b.ctx, b.cancel = context.WithCancel(context.Background())
-	operatorCrds, err := getOperatorCRDs()
-	if err != nil {
+
+	if err := b.prepareCRDs(); err != nil {
 		return nil, err
 	}
-	b.crds = append(b.crds, operatorCrds...)
-	schedulerCrds, err := getSchedulerCRDs()
-	if err != nil {
-		return nil, err
+
+	b.configureEnvironment()
+
+	return b.createTestEnv(), nil
+}
+
+// prepareCRDs loads and configures all required CRDs
+func (b *EnvBuilder) prepareCRDs() error {
+	// Define CRD loaders with their descriptions
+	crdLoaders := []struct {
+		name   string
+		loader func() ([]*apiextensionsv1.CustomResourceDefinition, error)
+	}{
+		{"operator", getOperatorCRDs},
+		{"scheduler", getSchedulerCRDs},
 	}
-	b.crds = append(b.crds, schedulerCrds...)
-	// Setup envtest environment
+
+	// Load all CRDs using unified error handling
+	for _, crdLoader := range crdLoaders {
+		crds, err := crdLoader.loader()
+		if err != nil {
+			return fmt.Errorf("failed to load %s CRDs: %w", crdLoader.name, err)
+		}
+		b.crds = append(b.crds, crds...)
+	}
+
+	return nil
+}
+
+// configureEnvironment sets up the envtest environment
+func (b *EnvBuilder) configureEnvironment() {
 	b.env = &envtest.Environment{
 		CRDs:                  b.crds,
 		Scheme:                b.scheme,
 		WebhookInstallOptions: b.webhookOptions,
 	}
+}
 
-	// Register cleanup
-	b.t.Cleanup(func() {
-		b.cleanup()
-	})
-
+// createTestEnv creates the TestEnv instance
+func (b *EnvBuilder) createTestEnv() *TestEnv {
 	return &TestEnv{
 		T:       b.t,
 		Client:  nil, // Will be created in Start()
@@ -149,61 +195,5 @@ func (b *EnvBuilder) Build() (*TestEnv, error) {
 		namespaceConfigs: b.namespaces,
 		controllers:      b.controllers,
 		webhooks:         b.webhooks,
-	}, nil
-}
-
-// cleanup cleans up the test environment
-func (b *EnvBuilder) cleanup() {
-	if b.cancel != nil {
-		b.cancel()
 	}
-	if b.env != nil {
-		_ = b.env.Stop()
-	}
-}
-func (b *EnvBuilder) getPGSWebhookMutationConfig() *admissionregistrationv1.MutatingWebhookConfiguration {
-	webhookConfig := &admissionregistrationv1.MutatingWebhookConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "pgs-mutating-webhook-test",
-		},
-		Webhooks: []admissionregistrationv1.MutatingWebhook{{
-			Name: "pgs.mutating.webhooks.grove.io",
-			ClientConfig: admissionregistrationv1.WebhookClientConfig{
-				Service: &admissionregistrationv1.ServiceReference{
-					Name: "grove-operator-test-webhook",
-					Path: ptr.To("/webhooks/default-podgangset"),
-				},
-			},
-			Rules:                   defaultWebhookRules(),
-			FailurePolicy:           ptr.To(admissionregistrationv1.Fail),
-			MatchPolicy:             ptr.To(admissionregistrationv1.Exact),
-			SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
-			TimeoutSeconds:          ptr.To[int32](10),
-			AdmissionReviewVersions: []string{"v1"},
-		}},
-	}
-	return webhookConfig
-}
-
-func (b *EnvBuilder) getPGSWebhookValidationConfig() *admissionregistrationv1.ValidatingWebhookConfiguration {
-	webhookConfig := admissionregistrationv1.ValidatingWebhookConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "pgs-validating-webhook-test",
-		},
-		Webhooks: []admissionregistrationv1.ValidatingWebhook{{
-			Name: "pgs.validating.webhooks.grove.io",
-			ClientConfig: admissionregistrationv1.WebhookClientConfig{
-				Service: &admissionregistrationv1.ServiceReference{
-					Name: "grove-operator-test-webhook",
-					Path: ptr.To("/webhooks/validate-podgangset"),
-				},
-			},
-			Rules:                   defaultWebhookRules(),
-			FailurePolicy:           ptr.To(admissionregistrationv1.Fail),
-			SideEffects:             ptr.To(admissionregistrationv1.SideEffectClassNone),
-			TimeoutSeconds:          ptr.To[int32](10),
-			AdmissionReviewVersions: []string{"v1"},
-		}},
-	}
-	return &webhookConfig
 }
