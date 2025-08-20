@@ -36,7 +36,6 @@ import (
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -164,11 +163,11 @@ func (r _resource) getExpectedPodGangsForPCSG(ctx context.Context, pgs *grovecor
 		// Generate PCSG resource name from template name
 		pcsgFQN := grovecorev1alpha1.GeneratePodCliqueScalingGroupName(grovecorev1alpha1.ResourceNameReplica{Name: pgs.Name, Replica: pgsReplica}, pcsgConfig.Name)
 
-		// MinAvailable defaults to 1 if not specified
-		minAvailable := int(ptr.Deref(pcsgConfig.MinAvailable, 1))
+		// MinAvailable should always be non-nil due to kubebuilder default and defaulting webhook
+		minAvailable := int(*pcsgConfig.MinAvailable)
 
 		// Compute the replicas value from PCSG resource if it exists. If not, then use template replicas.
-		replicas := int(ptr.Deref(pcsgConfig.Replicas, 1))
+		replicas := int(*pcsgConfig.Replicas)
 		pcsg, ok := lo.Find(existingPCSGs, func(sg grovecorev1alpha1.PodCliqueScalingGroup) bool {
 			return sg.Name == pcsgFQN
 		})
@@ -226,8 +225,8 @@ func identifyConstituentPCLQsForPGSBasePodGang(sc *syncContext, pgsReplica int32
 //   - This function creates PodCliques for replicas 0, 1, 2 → go into base PodGang "simple1-0"
 //   - PCSG controller creates PodCliques for replicas 3, 4 → get scaled PodGangs "simple1-0-sga-0", etc.
 func buildPCSGPodCliqueInfosForBasePodGang(sc *syncContext, pclqTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec, pcsgConfig *grovecorev1alpha1.PodCliqueScalingGroupConfig, pgsReplica int32) []pclqInfo {
-	// MinAvailable defaults to 1 if not specified
-	minAvailable := int(ptr.Deref(pcsgConfig.MinAvailable, 1))
+	// MinAvailable should always be non-nil due to kubebuilder default and defaulting webhook
+	minAvailable := int(*pcsgConfig.MinAvailable)
 
 	pclqs := make([]pclqInfo, 0, minAvailable)
 	for replicaIndex := range minAvailable {
@@ -261,7 +260,7 @@ func buildPodCliqueInfo(sc *syncContext, pclqTemplateSpec *grovecorev1alpha1.Pod
 	return pclqInfo{
 		fqn:          pclqFQN,
 		replicas:     replicas,
-		minAvailable: ptr.Deref(pclqTemplateSpec.Spec.MinAvailable, pclqTemplateSpec.Spec.Replicas),
+		minAvailable: *pclqTemplateSpec.Spec.MinAvailable,
 	}
 }
 
@@ -300,7 +299,7 @@ func identifyConstituentPCLQsForPCSGPodGang(pgs *grovecorev1alpha1.PodGangSet, p
 		constituentPCLQs = append(constituentPCLQs, pclqInfo{
 			fqn:          pclqFQN,
 			replicas:     pclqTemplate.Spec.Replicas, // For scaling group instances, always use template replicas
-			minAvailable: ptr.Deref(pclqTemplate.Spec.MinAvailable, pclqTemplate.Spec.Replicas),
+			minAvailable: *pclqTemplate.Spec.MinAvailable,
 		})
 	}
 	return constituentPCLQs, nil

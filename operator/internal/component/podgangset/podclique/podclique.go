@@ -38,7 +38,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
@@ -93,7 +92,7 @@ func (r _resource) Sync(ctx context.Context, logger logr.Logger, pgs *grovecorev
 		return err
 	}
 
-	terminationDelay := ptr.Deref(pgs.Spec.Template.TerminationDelay, metav1.Duration{Duration: 30 * time.Second}).Duration
+	terminationDelay := pgs.Spec.Template.TerminationDelay.Duration
 	podGangsRequiringRequeue, err := r.checkMinAvailableBreachAndDeletePGSReplicaPodGang(ctx, logger, pgs, terminationDelay)
 	if err != nil {
 		return err
@@ -194,7 +193,7 @@ func (r _resource) getMinAvailableBreachedPCLQsNotInPCSGForPGSReplica(ctx contex
 		skipPGSReplica = true
 		return
 	}
-	breachedPCLQNames, minWaitFor = componentutils.GetMinAvailableBreachedPCLQInfo(pclqs, ptr.Deref(pgs.Spec.Template.TerminationDelay, metav1.Duration{Duration: 30 * time.Second}).Duration, since)
+	breachedPCLQNames, minWaitFor = componentutils.GetMinAvailableBreachedPCLQInfo(pclqs, pgs.Spec.Template.TerminationDelay.Duration, since)
 	return
 }
 
