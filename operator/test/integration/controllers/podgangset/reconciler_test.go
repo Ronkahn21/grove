@@ -46,9 +46,9 @@ func TestPodGangSetCreatesChildResources(t *testing.T) {
 	pgs := utils.NewPodGangSetBuilder("test-pgs", "test-ns").
 		WithMinimal().
 		WithReplicas(1).
-		WithPodCliqueParameters("clique-1", 2, nil).
-		WithPodCliqueParameters("clique-2", 1, nil).
-		WithPodCliqueParameters("clique-3", 1, nil).
+		WithPodCliqueParameters("clique-1", 2, 2, nil).
+		WithPodCliqueParameters("clique-2", 1, 1, nil).
+		WithPodCliqueParameters("clique-3", 1, 1, nil).
 		WithPodCliqueScalingGroupConfig(grovecorev1alpha1.PodCliqueScalingGroupConfig{
 			Name:         "new",
 			CliqueNames:  []string{"clique-3"},

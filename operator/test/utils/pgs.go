@@ -52,9 +52,10 @@ func (b *PodGangSetBuilder) WithReplicas(replicas int32) *PodGangSetBuilder {
 }
 
 // WithPodCliqueParameters is a convenience function that creates a PodCliqueTemplateSpec given the parameters and adds it to the PodGangSet.
-func (b *PodGangSetBuilder) WithPodCliqueParameters(name string, replicas int32, startsAfter []string) *PodGangSetBuilder {
+func (b *PodGangSetBuilder) WithPodCliqueParameters(name string, replicas, minAvailable int32, startsAfter []string) *PodGangSetBuilder {
 	pclqTemplateSpec := NewPodCliqueTemplateSpecBuilder(name).
 		WithReplicas(replicas).
+		WithMinAvailable(minAvailable).
 		WithStartsAfter(startsAfter).
 		Build()
 	return b.WithPodCliqueTemplateSpec(pclqTemplateSpec)
@@ -78,7 +79,7 @@ func (b *PodGangSetBuilder) WithPodCliqueScalingGroupConfig(config grovecorev1al
 func (b *PodGangSetBuilder) WithMinimal() *PodGangSetBuilder {
 	b.WithTerminationDelay(30 * time.Second)
 	if len(b.pgs.Spec.Template.Cliques) == 0 {
-		b.WithPodCliqueParameters("default-clique", 1, nil)
+		b.WithPodCliqueParameters("default-clique", 1, 1, nil)
 	}
 	// Ensure all cliques have minAvailable set
 	for _, clique := range b.pgs.Spec.Template.Cliques {
