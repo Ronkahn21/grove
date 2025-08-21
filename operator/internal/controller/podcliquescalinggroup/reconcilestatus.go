@@ -46,7 +46,7 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pc
 			return ctrlcommon.ReconcileWithErrors(fmt.Sprintf("failed to list PodCliques for PodCliqueScalingGroup: %q", client.ObjectKeyFromObject(pcsg)), err)
 		}
 		mutateReplicas(logger, pcsg, pclqsPerPCSGReplica)
-		mutateMinAvailableBreachedCondition(pcsg)
+		mutateMinAvailableBreachedCondition(logger, pcsg)
 	}
 
 	if err = mutateSelector(pgs, pcsg); err != nil {
@@ -64,21 +64,22 @@ func (r *Reconciler) reconcileStatus(ctx context.Context, logger logr.Logger, pc
 // computeReplicaStatus processes a single PodCliqueScalingGroup replica and returns whether it is scheduled and available.
 func computeReplicaStatus(logger logr.Logger, expectedPCSGReplicaPCLQSize int, pcsgReplicaIndex string, pclqs []grovecorev1alpha1.PodClique) (bool, bool) {
 	var isAvailable, isScheduled bool
-	NonTermintedPCSGReplicaIndex := lo.Filter(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
+	nonTerminatedPCSGPodCliques := lo.Filter(pclqs, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
 		return !k8sutils.IsResourceTerminating(pclq.ObjectMeta)
 	})
-	if len(NonTermintedPCSGReplicaIndex) != expectedPCSGReplicaPCLQSize {
+	if len(nonTerminatedPCSGPodCliques) != expectedPCSGReplicaPCLQSize {
 		logger.V(1).Info("PCSG replica does not have the expected number of PodCliques",
 			"pcsgReplicaIndex", pcsgReplicaIndex,
 			"expectedPCSGReplicaPCLQSize", expectedPCSGReplicaPCLQSize,
-			"actualPCSGReplicaPCLQSize", len(NonTermintedPCSGReplicaIndex))
+			"actualPCSGReplicaPCLQSize", len(nonTerminatedPCSGPodCliques))
 		return false, false
 	}
-	isScheduled = lo.EveryBy(NonTermintedPCSGReplicaIndex, func(pclq grovecorev1alpha1.PodClique) bool {
+	isScheduled = lo.EveryBy(nonTerminatedPCSGPodCliques, func(pclq grovecorev1alpha1.PodClique) bool {
 		return k8sutils.IsConditionTrue(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypePodCliqueScheduled)
 	})
 
-	isAvailable = lo.EveryBy(NonTermintedPCSGReplicaIndex, func(pclq grovecorev1alpha1.PodClique) bool {
+	// isAvailable should only be true if pods are both scheduled AND have MinAvailableBreached set to false
+	isAvailable = isScheduled && lo.EveryBy(nonTerminatedPCSGPodCliques, func(pclq grovecorev1alpha1.PodClique) bool {
 		return k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
 	})
 	return isScheduled, isAvailable
@@ -103,9 +104,14 @@ func mutateReplicas(logger logr.Logger, pcsg *grovecorev1alpha1.PodCliqueScaling
 	pcsg.Status.AvailableReplicas = availableReplicas
 }
 
-func mutateMinAvailableBreachedCondition(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
+func mutateMinAvailableBreachedCondition(logger logr.Logger, pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
 	newCondition := computeMinAvailableBreachedCondition(pcsg)
 	if k8sutils.HasConditionChanged(pcsg.Status.Conditions, newCondition) {
+		logger.Info("Updating MinAvailableBreached condition for PodCliqueScalingGroup",
+			"pcsg", client.ObjectKeyFromObject(pcsg),
+			"conditionType", newCondition.Type,
+			"conditionStatus", newCondition.Status,
+			"reason", newCondition.Reason)
 		meta.SetStatusCondition(&pcsg.Status.Conditions, newCondition)
 	}
 }

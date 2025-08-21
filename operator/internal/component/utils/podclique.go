@@ -113,8 +113,8 @@ func GetMinAvailableBreachedPCLQInfo(pclqs []grovecorev1alpha1.PodClique, termin
 	return pclqCandidateNames, waitForDurations[0]
 }
 
-// GetPodCliquesForPGSNotInPCSG retrieves PodClique objects that are not part of any PodCliqueScalingGroup for the given PodGangSet.
-func GetPodCliquesForPGSNotInPCSG(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey) ([]grovecorev1alpha1.PodClique, error) {
+// GetPodCliquesWithParentPGS retrieves PodClique objects that are not part of any PodCliqueScalingGroup for the given PodGangSet.
+func GetPodCliquesWithParentPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey) ([]grovecorev1alpha1.PodClique, error) {
 	pclqList := &grovecorev1alpha1.PodCliqueList{}
 	err := cl.List(ctx,
 		pclqList,

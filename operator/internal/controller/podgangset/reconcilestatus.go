@@ -74,7 +74,7 @@ func (r *Reconciler) computeAvailableReplicas(ctx context.Context, logger logr.L
 	}
 
 	// Fetch all standalone PodCliques for this PGS
-	standalonePCLQs, err := componentutils.GetPodCliquesForPGSNotInPCSG(ctx, r.client, client.ObjectKeyFromObject(pgs))
+	standalonePCLQs, err := componentutils.GetPodCliquesWithParentPGS(ctx, r.client, client.ObjectKeyFromObject(pgs))
 	if err != nil {
 		return -1, err
 	}
