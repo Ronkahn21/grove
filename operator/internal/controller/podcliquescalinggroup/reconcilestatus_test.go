@@ -78,6 +78,7 @@ func TestComputeReplicaStatus(t *testing.T) {
 		name          string
 		expectedSize  int
 		cliques       []grovecorev1alpha1.PodClique
+		minAvailable  int32
 		wantScheduled bool
 		wantAvailable bool
 	}{
@@ -85,6 +86,7 @@ func TestComputeReplicaStatus(t *testing.T) {
 			name:          "healthy vs failed states",
 			expectedSize:  2,
 			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildFailedClique("backend")},
+			minAvailable:  1,
 			wantScheduled: false,
 			wantAvailable: false,
 		},
@@ -92,6 +94,7 @@ func TestComputeReplicaStatus(t *testing.T) {
 			name:          "incomplete replica counting",
 			expectedSize:  3,
 			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend")},
+			minAvailable:  1,
 			wantScheduled: false,
 			wantAvailable: false,
 		},
@@ -99,6 +102,7 @@ func TestComputeReplicaStatus(t *testing.T) {
 			name:          "scheduled but unavailable",
 			expectedSize:  2,
 			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildScheduledClique("backend")},
+			minAvailable:  1,
 			wantScheduled: true,
 			wantAvailable: false,
 		},
@@ -106,14 +110,31 @@ func TestComputeReplicaStatus(t *testing.T) {
 			name:          "terminating clique filtering",
 			expectedSize:  2,
 			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend"), buildTerminatingClique("old"), buildTerminatingClique("terminated")},
+			minAvailable:  1,
 			wantScheduled: true,
 			wantAvailable: true,
+		},
+		{
+			name:          "available with minAvailable zero",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildScheduledClique("backend")},
+			minAvailable:  0,
+			wantScheduled: true,
+			wantAvailable: true,
+		},
+		{
+			name:          "unavailable with high minAvailable",
+			expectedSize:  2,
+			cliques:       []grovecorev1alpha1.PodClique{buildHealthyClique("frontend"), buildHealthyClique("backend")},
+			minAvailable:  2,
+			wantScheduled: true,
+			wantAvailable: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scheduled, available := computeReplicaStatus(logger, tt.expectedSize, "0", tt.cliques)
+			scheduled, available := computeReplicaStatus(logger, tt.expectedSize, "0", tt.cliques, tt.minAvailable)
 
 			assert.Equal(t, tt.wantScheduled, scheduled, "scheduled mismatch")
 			assert.Equal(t, tt.wantAvailable, available, "available mismatch")
@@ -257,15 +278,19 @@ func TestReconcileStatus(t *testing.T) {
 				cliques := []client.Object{
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 				}
 				return pcsg, pgs, cliques
@@ -286,12 +311,15 @@ func TestReconcileStatus(t *testing.T) {
 				cliques := []client.Object{
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledButBreached()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-worker-2", "test-ns", "test-pgs", "test-pcsg", 0, 2).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQNotScheduled()).Build(),
 				}
 				return pcsg, pgs, cliques
@@ -312,16 +340,20 @@ func TestReconcileStatus(t *testing.T) {
 					// Replica 0: healthy
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-0", "test-ns", "test-pgs", "test-pcsg", 0, 0).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					// Replica 1: has one terminating clique
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-frontend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQScheduledAndAvailable()).Build(),
 					testutils.NewPCSGPodCliqueBuilder("test-pgs-0-backend-1", "test-ns", "test-pgs", "test-pcsg", 0, 1).
 						WithOwnerReference("PodCliqueScalingGroup", "test-pcsg", "").
+						WithReplicas(2).
 						WithOptions(testutils.WithPCLQTerminating()).Build(),
 				}
 				return pcsg, pgs, cliques

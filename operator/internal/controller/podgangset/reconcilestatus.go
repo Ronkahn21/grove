@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/samber/lo"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -153,7 +154,7 @@ func (r *Reconciler) isPGSReplicaPCLAsAvailable(logger logr.Logger, pgs *groveco
 	}
 
 	isAvailable := lo.EveryBy(nonTerminatedPCLQs, func(pclq grovecorev1alpha1.PodClique) bool {
-		return k8sutils.IsConditionFalse(pclq.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
+		return pclq.Status.ReadyReplicas >= ptr.Deref(pclq.Spec.MinAvailable, pclq.Spec.Replicas)
 	})
 
 	logger.Info("PGS replica availability status", "pgs",
@@ -172,7 +173,7 @@ func (r *Reconciler) checkPCSGsAvailability(logger logr.Logger, pgs *grovecorev1
 		return false
 	}
 	isAvailable := lo.EveryBy(nonTerminatedPCSGs, func(pcsg grovecorev1alpha1.PodCliqueScalingGroup) bool {
-		return k8sutils.IsConditionFalse(pcsg.Status.Conditions, grovecorev1alpha1.ConditionTypeMinAvailableBreached)
+		return pcsg.Status.AvailableReplicas >= ptr.Deref(pcsg.Spec.MinAvailable, pcsg.Spec.Replicas)
 	})
 
 	logger.Info("PGS replica PCSG availability status", "pgs",

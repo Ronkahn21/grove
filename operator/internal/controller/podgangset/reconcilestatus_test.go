@@ -92,14 +92,14 @@ func TestComputePGSAvailableReplicas(t *testing.T) {
 				return []client.Object{
 					// Healthy PCSGs
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-0-compute", testNamespace, testPGSName, 0).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-1-compute", testNamespace, testPGSName, 1).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 					// Healthy standalone PodCliques
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-0-worker", testNamespace, 0).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-1-worker", testNamespace, 1).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 				}
 			},
 			expectedAvailable: 2,
@@ -116,11 +116,11 @@ func TestComputePGSAvailableReplicas(t *testing.T) {
 			childResources: func() []client.Object {
 				return []client.Object{
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-0-compute", testNamespace, testPGSName, 0).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-1-compute", testNamespace, testPGSName, 1).
 						WithOptions(testutils.WithPCSGMinAvailableBreached()).Build(),
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-0-worker", testNamespace, 0).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-1-worker", testNamespace, 1).
 						WithOptions(testutils.WithPCLQTerminating()).Build(),
 				}
@@ -169,13 +169,13 @@ func TestComputePGSAvailableReplicas(t *testing.T) {
 			childResources: func() []client.Object {
 				return []client.Object{
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-0-worker", testNamespace, 0).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-0-monitor", testNamespace, 0).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-1-worker", testNamespace, 1).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-1-monitor", testNamespace, 1).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 				}
 			},
 			expectedAvailable: 2,
@@ -192,13 +192,13 @@ func TestComputePGSAvailableReplicas(t *testing.T) {
 			childResources: func() []client.Object {
 				return []client.Object{
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-0-compute", testNamespace, testPGSName, 0).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-0-storage", testNamespace, testPGSName, 0).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-1-compute", testNamespace, testPGSName, 1).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-1-storage", testNamespace, testPGSName, 1).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 				}
 			},
 			expectedAvailable: 2,
@@ -274,9 +274,9 @@ func TestComputePGSAvailableReplicas(t *testing.T) {
 			childResources: func() []client.Object {
 				return []client.Object{
 					testutils.NewPodCliqueBuilder(testPGSName, types.UID(uuid.NewString()), "test-pgs-0-worker", testNamespace, 0).
-						WithOptions(testutils.WithPCLQAvailable()).Build(),
+						WithOptions(testutils.WithPCLQReplicaReadyStatus(1)).Build(),
 					testutils.NewPodCliqueScalingGroupBuilder("test-pgs-0-unexpected", testNamespace, testPGSName, 0).
-						WithOptions(testutils.WithPCSGHealthy()).Build(),
+						WithOptions(testutils.WithPCSGAvailableReplicas(1)).Build(),
 				}
 			},
 			expectedAvailable: 1,

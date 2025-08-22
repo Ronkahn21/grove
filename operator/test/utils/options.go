@@ -31,19 +31,6 @@ import (
 // PCSGOption is a function that modifies a PodCliqueScalingGroup for testing.
 type PCSGOption func(*grovecorev1alpha1.PodCliqueScalingGroup)
 
-// WithPCSGHealthy sets the PCSG to a healthy state with MinAvailableBreached=False.
-func WithPCSGHealthy() PCSGOption {
-	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
-		pcsg.Status.Conditions = []metav1.Condition{
-			{
-				Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
-				Status: metav1.ConditionFalse,
-				Reason: grovecorev1alpha1.ConditionReasonSufficientAvailablePCSGReplicas,
-			},
-		}
-	}
-}
-
 // WithPCSGMinAvailableBreached sets the PCSG to have MinAvailableBreached=True.
 func WithPCSGMinAvailableBreached() PCSGOption {
 	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
@@ -53,6 +40,16 @@ func WithPCSGMinAvailableBreached() PCSGOption {
 				Status: metav1.ConditionTrue,
 				Reason: grovecorev1alpha1.ConditionReasonInsufficientAvailablePCSGReplicas,
 			},
+		}
+		// Set AvailableReplicas to be less than MinAvailable to simulate breach
+		minAvailable := pcsg.Spec.Replicas
+		if pcsg.Spec.MinAvailable != nil {
+			minAvailable = *pcsg.Spec.MinAvailable
+		}
+		if minAvailable > 0 {
+			pcsg.Status.AvailableReplicas = minAvailable - 1
+		} else {
+			pcsg.Status.AvailableReplicas = 0
 		}
 	}
 }
@@ -67,6 +64,8 @@ func WithPCSGUnknownCondition() PCSGOption {
 				Reason: "UnknownState",
 			},
 		}
+		// For unknown condition, set AvailableReplicas to 0 to simulate unavailable state
+		pcsg.Status.AvailableReplicas = 0
 	}
 }
 
@@ -157,6 +156,20 @@ func WithPCLQScheduledButBreached() PCLQOption {
 func WithPCLQNoConditions() PCLQOption {
 	return func(pclq *grovecorev1alpha1.PodClique) {
 		pclq.Status.Conditions = []metav1.Condition{}
+	}
+}
+
+// WithPCSGAvailableReplicas sets specific AvailableReplicas count for PCSG without touching conditions.
+func WithPCSGAvailableReplicas(available int32) PCSGOption {
+	return func(pcsg *grovecorev1alpha1.PodCliqueScalingGroup) {
+		pcsg.Status.AvailableReplicas = available
+	}
+}
+
+// WithPCLQReplicaReadyStatus sets specific ReadyReplicas count for PodClique without touching conditions.
+func WithPCLQReplicaReadyStatus(ready int32) PCLQOption {
+	return func(pclq *grovecorev1alpha1.PodClique) {
+		pclq.Status.ReadyReplicas = ready
 	}
 }
 
