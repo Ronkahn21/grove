@@ -61,7 +61,8 @@ func NewPCSGPodCliqueBuilder(name, namespace, pgsName, pcsgName string, pgsRepli
 			},
 		},
 		Spec: grovecorev1alpha1.PodCliqueSpec{
-			Replicas: 1,
+			Replicas:     1,
+			MinAvailable: ptr.To(int32(1)),
 		},
 		Status: grovecorev1alpha1.PodCliqueStatus{},
 	}
@@ -156,7 +157,8 @@ func createDefaultPodCliqueWithoutPodSpec(pgsName string, pgsUID types.UID, pclq
 			},
 		},
 		Spec: grovecorev1alpha1.PodCliqueSpec{
-			Replicas: 1,
+			Replicas:     1,
+			MinAvailable: ptr.To(int32(1)),
 		},
 	}
 }

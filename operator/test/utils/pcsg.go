@@ -45,7 +45,8 @@ func NewPodCliqueScalingGroupBuilder(name, namespace, pgsName string, replicaInd
 				},
 			},
 			Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
-				Replicas: 1,
+				Replicas:     1,
+				MinAvailable: ptr.To(int32(1)),
 			},
 			Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{},
 		},

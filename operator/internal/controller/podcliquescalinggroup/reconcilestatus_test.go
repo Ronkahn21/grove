@@ -149,6 +149,7 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 		minAvailable *int32
 		scheduled    int32
 		available    int32
+		pclqsMap     map[string][]grovecorev1alpha1.PodClique
 		wantStatus   metav1.ConditionStatus
 		wantReason   string
 	}{
@@ -157,6 +158,7 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 			replicas:   3,
 			scheduled:  3,
 			available:  3,
+			pclqsMap:   make(map[string][]grovecorev1alpha1.PodClique),
 			wantStatus: metav1.ConditionFalse,
 			wantReason: "SufficientAvailablePodCliqueScalingGroupReplicas",
 		},
@@ -166,6 +168,7 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 			minAvailable: ptr.To(int32(2)),
 			scheduled:    3,
 			available:    3,
+			pclqsMap:     make(map[string][]grovecorev1alpha1.PodClique),
 			wantStatus:   metav1.ConditionFalse,
 			wantReason:   "SufficientAvailablePodCliqueScalingGroupReplicas",
 		},
@@ -175,6 +178,7 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 			minAvailable: ptr.To(int32(2)),
 			scheduled:    1,
 			available:    1,
+			pclqsMap:     make(map[string][]grovecorev1alpha1.PodClique),
 			wantStatus:   metav1.ConditionFalse,
 			wantReason:   "InsufficientScheduledPodCliqueScalingGroupReplicas",
 		},
@@ -182,19 +186,37 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 			name:         "insufficient available",
 			replicas:     3,
 			minAvailable: ptr.To(int32(2)),
-			scheduled:    3,
+			scheduled:    2,
 			available:    1,
-			wantStatus:   metav1.ConditionTrue,
-			wantReason:   "InsufficientAvailablePodCliqueScalingGroupReplicas",
+			pclqsMap: map[string][]grovecorev1alpha1.PodClique{
+				"0": {
+					{
+						Status: grovecorev1alpha1.PodCliqueStatus{
+							Conditions: []metav1.Condition{
+								{
+									Type:   grovecorev1alpha1.ConditionTypeMinAvailableBreached,
+									Status: metav1.ConditionTrue,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantStatus: metav1.ConditionTrue,
+			wantReason: "InsufficientAvailablePodCliqueScalingGroupReplicas",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			minAvailable := tt.minAvailable
+			if minAvailable == nil {
+				minAvailable = &tt.replicas
+			}
 			pcsg := &grovecorev1alpha1.PodCliqueScalingGroup{
 				Spec: grovecorev1alpha1.PodCliqueScalingGroupSpec{
 					Replicas:     tt.replicas,
-					MinAvailable: tt.minAvailable,
+					MinAvailable: minAvailable,
 				},
 				Status: grovecorev1alpha1.PodCliqueScalingGroupStatus{
 					ScheduledReplicas: tt.scheduled,
@@ -202,7 +224,8 @@ func TestComputeMinAvailableBreachedCondition(t *testing.T) {
 				},
 			}
 
-			condition := computeMinAvailableBreachedCondition(pcsg)
+			logger := testutils.SetupTestLogger()
+			condition := computeMinAvailableBreachedCondition(logger, pcsg, tt.pclqsMap)
 
 			assert.Equal(t, "MinAvailableBreached", condition.Type)
 			assert.Equal(t, tt.wantStatus, condition.Status)
