@@ -65,8 +65,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return result.Result()
 	}
 
-	if result := r.reconcileSpec(ctx, logger, pgs); ctrlcommon.ShortCircuitReconcileFlow(result) {
-		return result.Result()
+	if result := r.reconcileSpec(ctx, logger, pgs); result.HasErrors() {
+		logger.Info("Reconciliation spec step failed",
+			"PodGangSet", ctrlclient.ObjectKeyFromObject(pgs), "errors", result.GetErrors(), "description", result.GetDescription())
 	}
 
 	return r.reconcileStatus(ctx, logger, pgs).Result()

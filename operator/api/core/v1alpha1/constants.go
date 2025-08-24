@@ -39,9 +39,12 @@ const (
 	LabelPodGangSetReplicaIndex = "grove.io/podgangset-replica-index"
 	// LabelPodCliqueScalingGroup is a key for a label that sets the PodCliqueScalingGroup name.
 	LabelPodCliqueScalingGroup = "grove.io/podcliquescalinggroup"
-
 	// LabelPodCliqueScalingGroupReplicaIndex is a key for a label that sets the replica index of a PCSG within PodGangSet.
 	LabelPodCliqueScalingGroupReplicaIndex = "grove.io/podcliquescalinggroup-replica-index"
+	// LabelComponentPGSPodCliqueValue is the value for LabelComponentKey for PodClique resources managed by a PodGangSet.
+	LabelComponentPGSPodCliqueValue = "pgs-podclique"
+	// LabelComponentPCSGPodCliqueValue is the value for LabelComponentKey for PodClique resources managed by a PodCliqueScalingGroup.
+	LabelComponentPCSGPodCliqueValue = "pcsg-podclique"
 )
 
 // Constants for finalizers.

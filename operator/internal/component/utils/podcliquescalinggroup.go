@@ -56,6 +56,15 @@ func GetPCSGsForPGSReplicaIndex(ctx context.Context, cl client.Client, pgsObjKey
 	return pcsgList.Items, nil
 }
 
+// GetPCSGsForPGS fetches all PodCliqueScalingGroups for a PodGangSet.
+func GetPCSGsForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey) ([]grovecorev1alpha1.PodCliqueScalingGroup, error) {
+	pcsgList, err := doGetPCSGsForPGS(ctx, cl, pgsObjKey, nil)
+	if err != nil {
+		return nil, err
+	}
+	return pcsgList.Items, nil
+}
+
 func doGetPCSGsForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey, matchingLabels map[string]string) (*grovecorev1alpha1.PodCliqueScalingGroupList, error) {
 	pcsgList := &grovecorev1alpha1.PodCliqueScalingGroupList{}
 	if err := cl.List(ctx,
@@ -69,15 +78,6 @@ func doGetPCSGsForPGS(ctx context.Context, cl client.Client, pgsObjKey client.Ob
 		return nil, err
 	}
 	return pcsgList, nil
-}
-
-// GetPCSGsForPGS fetches all PodCliqueScalingGroups for a PodGangSet.
-func GetPCSGsForPGS(ctx context.Context, cl client.Client, pgsObjKey client.ObjectKey) ([]grovecorev1alpha1.PodCliqueScalingGroup, error) {
-	pcsgList, err := doGetPCSGsForPGS(ctx, cl, pgsObjKey, nil)
-	if err != nil {
-		return nil, err
-	}
-	return pcsgList.Items, nil
 }
 
 // GetMinAvailableBreachedPCSGInfo filters PodCliqueScalingGroups that have grovecorev1alpha1.ConditionTypeMinAvailableBreached set to true.

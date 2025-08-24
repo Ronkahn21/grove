@@ -20,7 +20,6 @@ import (
 	"strconv"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/common"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
 
 	"github.com/samber/lo"
@@ -56,7 +55,7 @@ func NewPCSGPodCliqueBuilder(name, namespace, pgsName, pcsgName string, pgsRepli
 				grovecorev1alpha1.LabelManagedByKey:                      grovecorev1alpha1.LabelManagedByValue,
 				grovecorev1alpha1.LabelPartOfKey:                         pgsName,
 				grovecorev1alpha1.LabelPodCliqueScalingGroup:             pcsgName,
-				grovecorev1alpha1.LabelComponentKey:                      common.NamePCSGPodClique,
+				grovecorev1alpha1.LabelComponentKey:                      grovecorev1alpha1.LabelComponentPCSGPodCliqueValue,
 				grovecorev1alpha1.LabelPodGangSetReplicaIndex:            strconv.Itoa(pgsReplicaIndex),
 				grovecorev1alpha1.LabelPodCliqueScalingGroupReplicaIndex: strconv.Itoa(pcsgReplicaIndex),
 			},
@@ -165,7 +164,7 @@ func createDefaultPodCliqueWithoutPodSpec(pgsName string, pgsUID types.UID, pclq
 func getDefaultLabels(pgsName, pclqName string, pgsReplicaIndex int32) map[string]string {
 	pclqComponentLabels := map[string]string{
 		grovecorev1alpha1.LabelAppNameKey:             pclqName,
-		grovecorev1alpha1.LabelComponentKey:           common.NamePGSPodClique,
+		grovecorev1alpha1.LabelComponentKey:           grovecorev1alpha1.LabelComponentPGSPodCliqueValue,
 		grovecorev1alpha1.LabelPodGangSetReplicaIndex: strconv.Itoa(int(pgsReplicaIndex)),
 	}
 	return lo.Assign(

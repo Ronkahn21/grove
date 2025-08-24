@@ -22,7 +22,6 @@ import (
 	"time"
 
 	grovecorev1alpha1 "github.com/NVIDIA/grove/operator/api/core/v1alpha1"
-	"github.com/NVIDIA/grove/operator/internal/common"
 	k8sutils "github.com/NVIDIA/grove/operator/internal/utils/kubernetes"
 
 	"github.com/samber/lo"
@@ -122,7 +121,7 @@ func GetPodCliquesWithParentPGS(ctx context.Context, cl client.Client, pgsObjKey
 		client.MatchingLabels(lo.Assign(
 			k8sutils.GetDefaultLabelsForPodGangSetManagedResources(pgsObjKey.Name),
 			map[string]string{
-				grovecorev1alpha1.LabelComponentKey: common.NamePGSPodClique,
+				grovecorev1alpha1.LabelComponentKey: grovecorev1alpha1.LabelComponentPGSPodCliqueValue,
 			},
 		)),
 	)
