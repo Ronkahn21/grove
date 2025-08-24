@@ -69,7 +69,7 @@ format: $(GOIMPORTS_REVISER)
 # Run all unit tests
 .PHONY: test-unit
 test-unit:
-	@go test ./...
+	@go test $(shell go list ./... | grep -v './test/integration')
 
 # Run all unit tests with code coverage
 .PHONY: test-cover
