@@ -90,8 +90,7 @@ func (es *EnvironmentSetup) CreateRequiredNamespaces(namespaces map[string]*core
 		return nil
 	}
 	es.t.Logf("Creating %d required namespaces", len(namespaces))
-	nsManager := NewNamespaceManager(es.ctx, es.client, namespaces, es.t)
-	if err := nsManager.CreateAll(); err != nil {
+	if err := CreateNamespaces(es.ctx, es.client, namespaces, es.t); err != nil {
 		return err
 	}
 	es.t.Logf("All required namespaces created successfully")
@@ -128,28 +127,72 @@ func (es *EnvironmentSetup) CreateManager(webhooks map[WebhookType]bool, webhook
 	return mgr, nil
 }
 
+// RegisterControllers registers controllers with the manager
+func (es *EnvironmentSetup) RegisterControllers(mgr manager.Manager, controllers map[ControllerType]bool) error {
+	if len(controllers) == 0 {
+		return nil
+	}
+
+	controllerRegisters := map[ControllerType]func() error{
+		ControllerPodGangSet:   func() error { return RegisterPodGangSetController(mgr, es.t) },
+		ControllerPodClique:    func() error { return RegisterPodCliqueController(mgr, es.t) },
+		ControllerScalingGroup: func() error { return RegisterScalingGroupController(mgr, es.t) },
+	}
+
+	es.t.Logf("Registering controllers: %v", getControllerNames(controllers))
+
+	for controllerType := range controllers {
+		registerFunc, exists := controllerRegisters[controllerType]
+		if !exists {
+			return fmt.Errorf("unknown controller type: %s", controllerType)
+		}
+		if err := registerFunc(); err != nil {
+			return err
+		}
+		es.t.Logf("Controller %s registered successfully", controllerType)
+	}
+
+	es.t.Logf("All controllers registered successfully")
+	return nil
+}
+
+// RegisterWebhooks registers webhooks with the manager
+func (es *EnvironmentSetup) RegisterWebhooks(mgr manager.Manager, webhooks map[WebhookType]bool) error {
+	if len(webhooks) == 0 {
+		return nil
+	}
+
+	webhookRegisters := map[WebhookType]func() error{
+		WebhookValidation: func() error { return RegisterValidationWebhook(mgr, es.t) },
+		WebhookMutation:   func() error { return RegisterMutationWebhook(mgr, es.t) },
+	}
+
+	es.t.Logf("Registering webhooks: %v", getWebhookNames(webhooks))
+
+	for webhookType := range webhooks {
+
+		registerFunc, exists := webhookRegisters[webhookType]
+		if !exists {
+			return fmt.Errorf("unknown webhook type: %s", webhookType)
+		}
+		if err := registerFunc(); err != nil {
+			return err
+		}
+		es.t.Logf("Webhook %s registered successfully", webhookType)
+	}
+
+	es.t.Logf("All webhooks registered successfully")
+	return nil
+}
+
 // RegisterComponents registers controllers and webhooks with the manager
 func (es *EnvironmentSetup) RegisterComponents(mgr manager.Manager, controllers map[ControllerType]bool, webhooks map[WebhookType]bool) error {
-	operatorCfg := defaultTestOperatorConfig()
-
-	if len(controllers) > 0 {
-		es.t.Logf("Registering controllers: %v", getControllerNames(controllers))
-		controllerManager := NewControllerManager(mgr, controllers, operatorCfg, es.t)
-		if err := controllerManager.RegisterAll(); err != nil {
-			return err
-		}
-		es.t.Logf("All controllers registered successfully")
+	if err := es.RegisterControllers(mgr, controllers); err != nil {
+		return err
 	}
-
-	if len(webhooks) > 0 {
-		es.t.Logf("Registering webhooks: %v", getWebhookNames(webhooks))
-		webhookManager := NewWebhookManager(mgr, webhooks, es.t)
-		if err := webhookManager.RegisterAll(); err != nil {
-			return err
-		}
-		es.t.Logf("All webhooks registered successfully")
+	if err := es.RegisterWebhooks(mgr, webhooks); err != nil {
+		return err
 	}
-
 	es.t.Logf("Component registration completed")
 	return nil
 }
