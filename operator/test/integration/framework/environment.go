@@ -27,7 +27,6 @@ import (
 	grovelogger "github.com/NVIDIA/grove/operator/internal/logger"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -170,7 +169,6 @@ func (es *EnvironmentSetup) RegisterWebhooks(mgr manager.Manager, webhooks map[W
 	es.t.Logf("Registering webhooks: %v", getWebhookNames(webhooks))
 
 	for webhookType := range webhooks {
-
 		registerFunc, exists := webhookRegisters[webhookType]
 		if !exists {
 			return fmt.Errorf("unknown webhook type: %s", webhookType)
@@ -229,21 +227,4 @@ func getWebhookNames(webhooks map[WebhookType]bool) []string {
 		names = append(names, string(webhookType))
 	}
 	return names
-}
-
-// defaultTestOperatorConfig returns the default operator configuration for tests
-func defaultTestOperatorConfig() *configv1alpha1.OperatorConfiguration {
-	return &configv1alpha1.OperatorConfiguration{
-		Controllers: configv1alpha1.ControllerConfiguration{
-			PodGangSet: configv1alpha1.PodGangSetControllerConfiguration{
-				ConcurrentSyncs: ptr.To(1),
-			},
-			PodClique: configv1alpha1.PodCliqueControllerConfiguration{
-				ConcurrentSyncs: ptr.To(1),
-			},
-			PodCliqueScalingGroup: configv1alpha1.PodCliqueScalingGroupControllerConfiguration{
-				ConcurrentSyncs: ptr.To(1),
-			},
-		},
-	}
 }

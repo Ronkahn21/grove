@@ -27,13 +27,14 @@ import (
 	"github.com/NVIDIA/grove/operator/internal/controller/podgangset"
 	"github.com/NVIDIA/grove/operator/internal/webhook/admission/pgs/defaulting"
 	"github.com/NVIDIA/grove/operator/internal/webhook/admission/pgs/validation"
-	"k8s.io/utils/ptr"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
+// RegisterPodGangSetController registers the PodGangSet controller with the manager
 func RegisterPodGangSetController(mgr manager.Manager, t *testing.T) error {
 	config := configv1alpha1.PodGangSetControllerConfiguration{
 		ConcurrentSyncs: ptr.To(1),
@@ -46,6 +47,7 @@ func RegisterPodGangSetController(mgr manager.Manager, t *testing.T) error {
 	return nil
 }
 
+// RegisterPodCliqueController registers the PodClique controller with the manager
 func RegisterPodCliqueController(mgr manager.Manager, t *testing.T) error {
 	config := configv1alpha1.PodCliqueControllerConfiguration{
 		ConcurrentSyncs: ptr.To(1),
@@ -58,6 +60,7 @@ func RegisterPodCliqueController(mgr manager.Manager, t *testing.T) error {
 	return nil
 }
 
+// RegisterScalingGroupController registers the PodCliqueScalingGroup controller with the manager
 func RegisterScalingGroupController(mgr manager.Manager, t *testing.T) error {
 	config := configv1alpha1.PodCliqueScalingGroupControllerConfiguration{
 		ConcurrentSyncs: ptr.To(1),
@@ -70,6 +73,7 @@ func RegisterScalingGroupController(mgr manager.Manager, t *testing.T) error {
 	return nil
 }
 
+// RegisterValidationWebhook registers the validation webhook with the manager
 func RegisterValidationWebhook(mgr manager.Manager, t *testing.T) error {
 	t.Logf("Creating validation webhook handler")
 	validatingWebhook := validation.NewHandler(mgr)
@@ -79,6 +83,7 @@ func RegisterValidationWebhook(mgr manager.Manager, t *testing.T) error {
 	return nil
 }
 
+// RegisterMutationWebhook registers the mutation webhook with the manager
 func RegisterMutationWebhook(mgr manager.Manager, t *testing.T) error {
 	t.Logf("Creating mutation webhook handler")
 	defaultingWebhook := defaulting.NewHandler(mgr)
@@ -88,6 +93,7 @@ func RegisterMutationWebhook(mgr manager.Manager, t *testing.T) error {
 	return nil
 }
 
+// CreateNamespaces creates the provided namespaces using the given client
 func CreateNamespaces(ctx context.Context, client client.Client, namespaces map[string]*corev1.Namespace, t *testing.T) error {
 	for _, ns := range namespaces {
 		t.Logf("Creating namespace: name=%s, labels=%v", ns.Name, ns.Labels)
