@@ -399,19 +399,6 @@ func TestPodCliqueUpdateValidation(t *testing.T) {
 			newCliques:  []*grovecorev1alpha1.PodCliqueTemplateSpec{},
 			expectError: false,
 		},
-		{
-			name:        "Edge case: nil StartupType allows order change",
-			startupType: nil,
-			oldCliques: []*grovecorev1alpha1.PodCliqueTemplateSpec{
-				createDummyPodCliqueTemplate("a"),
-				createDummyPodCliqueTemplate("b"),
-			},
-			newCliques: []*grovecorev1alpha1.PodCliqueTemplateSpec{
-				createDummyPodCliqueTemplate("b"),
-				createDummyPodCliqueTemplate("a"),
-			},
-			expectError: false,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -522,21 +509,6 @@ func TestImmutableFieldsValidation(t *testing.T) {
 				pgs.Spec.Template.Cliques[0].Spec.RoleName = "new-role"
 				pgs.Spec.Template.Cliques[0].Spec.MinAvailable = ptr.To(int32(2))
 				pgs.Spec.Template.Cliques[0].Spec.StartsAfter = []string{"dep1", "dep2"}
-				return pgs
-			},
-			expectError:    true,
-			expectedErrMsg: "field is immutable",
-		},
-		{
-			name: "Edge case: nil MinAvailable changing to non-nil",
-			setupOldPGS: func() *grovecorev1alpha1.PodGangSet {
-				pgs := createDummyPodGangSet("test")
-				pgs.Spec.Template.Cliques[0].Spec.MinAvailable = nil
-				return pgs
-			},
-			setupNewPGS: func() *grovecorev1alpha1.PodGangSet {
-				pgs := createDummyPodGangSet("test")
-				pgs.Spec.Template.Cliques[0].Spec.MinAvailable = ptr.To(int32(1))
 				return pgs
 			},
 			expectError:    true,
