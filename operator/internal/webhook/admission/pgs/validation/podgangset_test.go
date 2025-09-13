@@ -19,7 +19,6 @@ package validation
 import (
 	"errors"
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/uuid"
 	"testing"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	admissionv1 "k8s.io/api/admission/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/uuid"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 )
