@@ -4,7 +4,8 @@
 
 This document defines the design for implementing topology-aware scheduling in the Grove operator.
 
-**Motivation for Grove**: Topology-aware scheduling is critical for Grove's multinode inference workloads because these
+**Motivation for Grove**: Topology-aware scheduling is critical for Grove's multinode inference workloads and more
+because these
 applications require:
 
 - **Network Locality**: High-bandwidth communication between prefill and decode workers benefits from proximity
@@ -13,16 +14,65 @@ applications require:
 - **Latency Optimization**: Minimizing network hops between interdependent inference components improves end-to-end
   performance
 
-## Topology Architecture Overview
+## Goals
 
-Grove implements comprehensive topology-aware scheduling across all scalable resources using a domain-based packing
-constraint model:
+- Provide flexible, cluster-agnostic topology hierarchy definition via TopologyDomain CRD
+- Enable packing constraints for network locality across all Grove scalable resources
+- Support multiple topology configurations for different environments
+- Automatic Kueue Topology generation for KAI scheduler integration
+- Immutable topology configuration ensuring scheduling consistency
+- Hierarchical constraint validation (child stricter than parent)
 
-- **Universal Resource Support**: All Grove resources with scale sub-resource (PodCliqueSet, PodCliqueScalingGroup,
-  PodClique) support topology constraints with hierarchical validation
+## Non-Goals
 
-- **Domain-Based Packing**: Grove uses domain references to specify where replicas should be packed together for optimal
-  network locality
+- Spread constraints across topology domains (ReplicaSpreadDomain)
+- Root domain constraints for entire resource (RootDomain)
+- Ratio-based affinity groups between scaling groups (AffinityGroups with PackRatio)
+- Dynamic topology reconfiguration after creation
+- Per-workload topology domain selection
+- Automatic topology inference from workload characteristics
+
+## Proposal
+
+### High-Level Approach
+
+Grove implements topology-aware scheduling through three key components:
+
+1. **TopologyDomain CRD**: Cluster-scoped resource defining topology hierarchy
+    - Admin creates TopologyDomain with ordered list of topology levels
+    - Each level maps friendly name (e.g., "rack") to node label key (e.g., "topology.kubernetes.io/rack")
+    - Multiple TopologyDomains supported for different environments
+
+2. **Operator Configuration**: References TopologyDomain by name
+    - Operator argument `--topology-domain-name=default` selects which TopologyDomain to use
+    - All workload validation performed against configured TopologyDomain
+    - Enables switching between topologies without changing workloads
+
+3. **Workload API (TopologyConstraint)**: Users specify packing requirements
+    - PodCliqueSet, PodCliqueScalingGroup, and PodClique each have TopologyConstraint field
+    - Users reference level names from TopologyDomain (e.g., `packDomain: "rack"`)
+    - No direct TopologyDomain reference needed in workloads
+
+### Component Interactions
+
+```
+TopologyDomain CRD ──┐
+  (admin creates)    │
+                     │
+Operator Config ─────┼──> Operator validates PackDomain
+  (--topology-       │    against TopologyDomain.Spec.Levels
+   domain-name)      │
+                     │
+PodCliqueSet ────────┘
+  (packDomain: "rack")
+```
+
+### Controller Responsibilities
+
+The TopologyDomain controller manages:
+
+- **Kueue Topology Generation**: Auto-creates Kueue Topology CRD for KAI scheduler integration
+- **Deletion Protection**: Prevents deletion while PodCliqueSet resources reference it
 
 ## Requirements
 
@@ -56,7 +106,6 @@ constraint model:
 
 - **Immutability**: All topology configuration must be immutable after resource creation
 - **Admin Configuration**: Admin should configure default topology for the grove operator
-- **Automatic Population**: Mutation webhook should autopopulate admin defaults if not provided
 - **Constraint Validation**: Validate domain hierarchy rules using index-based comparison
 - **Topology Deletion Prevention**: Prevent deletion of TopologyDomain CRD when any Grove resource references it using
   finalizers
@@ -74,25 +123,31 @@ The following features are explicitly out of scope for this design:
 - **Workload-Based Auto Constraints**: Automatic constraint generation based on workload characteristics, patterns, and
   inference requirements
 
-## Architecture Context
+## Design Details
 
 ### TopologyDomain CRD
 
-Grove uses a TopologyDomain CRD to define the cluster's topology hierarchy dynamically. This allows flexible, extensible
-topology definitions while maintaining immutability for stability.
+TopologyDomain is a cluster-scoped CRD that defines the topology hierarchy for scheduling. It maps friendly level names
+to Kubernetes node labels and establishes ordering from broadest to narrowest scope.
 
-#### CRD Structure
+**Characteristics:**
+
+- **Cluster-scoped**: Multiple TopologyDomains can exist
+- **Operator-selected**: Operator references one by name via `--topology-domain-name` argument
+- **Immutable**: Once created, cannot be modified
+- **List-ordered hierarchy**: Index 0 = broadest (e.g., region), last = narrowest (e.g., host)
+
+#### API Structure
 
 ```go
 // TopologyDomain defines the topology hierarchy for the cluster
 // This resource is immutable after creation
-// Only one TopologyDomain resource should exist per cluster (enforced by validation webhook)
+// Multiple TopologyDomain resources can exist; Grove operator references one via --topology-domain-name argument
 type TopologyDomain struct {
 metav1.TypeMeta   `json:",inline"`
 metav1.ObjectMeta `json:"metadata,omitempty"`
 
-Spec   TopologyDomainSpec   `json:"spec,omitempty"`
-Status TopologyDomainStatus `json:"status,omitempty"`
+Spec TopologyDomainSpec `json:"spec,omitempty"`
 }
 
 type TopologyDomainSpec struct {
@@ -111,7 +166,6 @@ type TopologyLevel struct {
 // Examples: "zone", "rack", "host"
 // +kubebuilder:validation:Required
 // +kubebuilder:validation:MinLength=1
-// +kubebuilder:validation:MaxLength=63
 // +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 Name string `json:"name"`
 
@@ -120,47 +174,18 @@ Name string `json:"name"`
 // Examples: "topology.kubernetes.io/zone", "kubernetes.io/hostname"
 // +kubebuilder:validation:Required
 // +kubebuilder:validation:MinLength=1
-// +kubebuilder:validation:MaxLength=316
 // +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$`
 TopologyKey string `json:"topologyKey"`
 
 // Description provides human-readable information about this level
-// +kubebuilder:validation:MaxLength=256
 // +optional
 Description string `json:"description,omitempty"`
 }
-
-type TopologyDomainStatus struct {
-// ObservedGeneration reflects the generation most recently observed by the controller
-// +optional
-ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-
-// Conditions represent observations of the topology domain's current state
-// Known condition types: Ready, KueueTopologyConsistent, InUse
-// +optional
-// +patchMergeKey=type
-// +patchStrategy=merge
-// +listType=map
-// +listMapKey=type
-Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-// UsedBy tracks Grove resources referencing this topology
-// Helps administrators understand deletion impact
-// +optional
-UsedBy *TopologyUsage `json:"usedBy,omitempty"`
-}
-
-type TopologyUsage struct {
-// PodCliqueSetCount is the number of PodCliqueSet resources using this topology
-// Controller scans cluster on reconciliation to maintain this count
-PodCliqueSetCount int32 `json:"podCliqueSetCount"`
-}
 ```
 
-#### Default TopologyDomain Resource (Provided in Grove Chart)
+#### Example TopologyDomain
 
-**Important:** Cluster admins MUST customize the `topologyKey` fields to match their actual cluster node labels before
-applying. This resource is provided as a template.
+Example resource with common topology levels:
 
 ```yaml
 apiVersion: grove.run.ai/v1alpha1
@@ -192,31 +217,27 @@ spec:
       description: "NUMA node within host"
 ```
 
-#### Cluster Admin Customization Requirements
+#### Creating TopologyDomain
 
-Before applying the TopologyDomain resource, cluster admins must customize it to match their specific cluster topology:
+**Steps:**
 
-**Required Customizations:**
+1. Install Grove: `helm install grove`
+2. Customize example above with your cluster's actual `topologyKey` values
+3. Create resource: `kubectl apply -f topologydomain.yaml`
+4. Configure operator with `--topology-domain-name` matching the resource name
+5. Create workloads with topology constraints
 
-- **Update `topologyKey` fields**: Each `topologyKey` must match the actual node label keys used in your cluster
-- The predefined level names and descriptions serve as a guide for proper configuration
+**Notes:**
 
-**Optional Customizations:**
+- TopologyDomain becomes immutable after creation
+- Multiple TopologyDomains can exist; operator uses the one specified in its argument
+- Ensure node labels exist on cluster nodes before creating workloads
 
-- **Modify `name` fields**: Change level names for clarity in your environment
-- **Add topology levels**: Include additional levels if your topology requires them
-- **Remove unused levels**: Delete levels that don't apply to your cluster
+#### Topology Hierarchy
 
-**Important Notes:**
-
-- **Must apply TopologyDomain before creating any Grove workloads** (PodCliqueSet resources)
-- **Once applied, the resource becomes immutable** - no modifications are allowed after creation
-- Ensure node labels are correctly configured on cluster nodes before applying
-
-**Domain Hierarchy**:
-
-- List order defines hierarchy (index 0 = highest/broadest, last index = lowest/narrowest)
-- Example: `region` (index 0) > `zone` (index 1) > `rack` (index 4) > `host` (index 5) > `numa` (index 6)
+- **List order defines hierarchy**: index 0 = highest/broadest level, last index = lowest/narrowest level
+- **Example hierarchy**: `region` (index 0) > `zone` (index 1) > `datacenter` (index 2) > `block` (index 3) > `rack` (
+  index 4) > `host` (index 5) > `numa` (index 6)
 
 #### TopologyDomain Validation Rules
 
@@ -230,36 +251,65 @@ Before applying the TopologyDomain resource, cluster admins must customize it to
 
 **Webhook Validations**:
 
-- **Singleton Enforcement**: Only one TopologyDomain resource allowed per cluster
-- **Unique Names**: Each level name in the list must be unique
-- **Unique Keys**: Each topologyKey in the list must be unique
+- **Unique Names**: Each level name in the list must be unique within a TopologyDomain
+- **Unique Keys**: Each topologyKey in the list must be unique within a TopologyDomain
 - **Immutability**: Cannot modify any field after creation
 - **Deletion Prevention**: Managed by TopologyDomain controller using finalizer `grove.run.ai/topology-protection`.
   Controller checks for PodCliqueSet existence before allowing deletion (see TopologyDomain Controller section)
 
+**Note:** Multiple TopologyDomain resources can exist in the cluster. The operator's `--topology-domain-name` argument
+selects which one to use for validation.
+
 #### Kueue Topology Integration
 
-Grove uses its own TopologyDomain CRD for defining topology levels and hierarchy, but must also integrate with Kueue
-Topology
-CRD which is required by KAI scheduler.
+While Grove uses its own TopologyDomain CRD for admin/user API, it must integrate with Kueue Topology CRD which is
+required by KAI scheduler for actual scheduling operations.
 
-**Two CRDs Working Together:**
+**Admin vs Internal Separation:**
 
-1. **TopologyDomain CRD** (Grove-specific):
-    - Defines level names, topology keys, and hierarchy (via list order)
-    - Used for validation and Grove API
-    - Cluster admins create this for Grove resources
-    - Immutable and singleton
+1. **TopologyDomain CRD** (Admin-facing):
+    - Created by cluster admins
+    - Defines friendly level names and topology keys
+    - Used for validation and user API
+    - Immutable
 
-2. **Kueue Topology CRD** (KAI requirement):
-    - Required by KAI scheduler for actual scheduling
-    - Must have matching topology keys in same order as TopologyDomain
-    - Grove operator validates consistency between both CRDs
+2. **Kueue Topology CRD** (Internal, auto-generated):
+    - Automatically created by TopologyDomain controller
+    - Required by KAI scheduler for scheduling operations
+    - Generated from TopologyDomain.Spec.Levels
+    - Admins never interact with this directly
 
-**Example Consistency:**
+**Why Separate CRDs:**
 
+- **TopologyDomain**: User-friendly with level names (e.g., "rack", "zone") for Grove workload references
+- **Kueue Topology**: KAI scheduler requirement, uses only node labels without friendly names
+- **Automatic sync**: Controller keeps them consistent, no manual coordination needed
+
+### TopologyDomain Controller
+
+Grove includes a dedicated controller that manages TopologyDomain resource lifecycle. The controller handles two primary
+responsibilities:
+
+1. **Kueue Topology Generation**: Automatically creates matching Kueue Topology CRD for KAI scheduler integration
+2. **Deletion Protection**: Prevents deletion of TopologyDomain while Grove workloads reference it
+
+#### Kueue Topology Generation
+
+The controller automatically generates a Kueue Topology CRD from the TopologyDomain referenced by the operator's
+`--topology-domain-name` argument. This eliminates manual coordination between the two CRDs.
+
+**Generation Process:**
+
+1. Controller watches the TopologyDomain resource specified in operator argument
+2. When TopologyDomain is created, controller automatically creates matching Kueue Topology
+3. Kueue Topology name matches TopologyDomain name
+4. Kueue Topology levels are extracted from TopologyDomain.Spec.Levels (using topologyKey field)
+5. Order is preserved from TopologyDomain list
+
+**Example:**
+
+From this TopologyDomain:
 ```yaml
-# Grove TopologyDomain
 apiVersion: grove.run.ai/v1alpha1
 kind: TopologyDomain
 metadata:
@@ -274,12 +324,17 @@ spec:
       topologyKey: "kubernetes.io/hostname"
 ```
 
+Controller generates this Kueue Topology:
 ```yaml
-# Kueue Topology (must match topology keys in same order)
 apiVersion: kueue.x-k8s.io/v1alpha1
 kind: Topology
 metadata:
   name: default
+  ownerReferences:
+    - apiVersion: grove.run.ai/v1alpha1
+      kind: TopologyDomain
+      name: default
+      controller: true
 spec:
   levels:
     - nodeLabel: "topology.kubernetes.io/zone"
@@ -287,16 +342,12 @@ spec:
     - nodeLabel: "kubernetes.io/hostname"
 ```
 
-**Consistency Validation:**
+**Key Points:**
 
-- Grove validates that all topologyKeys in TopologyDomain.Spec.Levels exist in Kueue Topology in the same order
-- Prevents scheduling failures due to mismatched topology definitions
-- Admin workflow: Create TopologyDomain first, then create matching Kueue Topology
-
-### TopologyDomain Controller
-
-Grove includes a dedicated controller that manages TopologyDomain resource lifecycle. Currently, this controller handles
-only deletion protection.
+- Admin only creates TopologyDomain - Kueue Topology is generated automatically
+- Owner reference ensures Kueue Topology is deleted when TopologyDomain is deleted
+- Both resources have same name for clarity
+- No manual coordination required
 
 #### Deletion Protection Mechanism
 
@@ -606,7 +657,7 @@ metadata:
 
 ### Admin Configuration
 
-Administrators configure the default topology name in the operator deployment:
+Administrators configure which TopologyDomain to use by specifying its name in the Grove operator deployment:
 
 ```yaml
 apiVersion: apps/v1
@@ -619,8 +670,21 @@ spec:
       containers:
         - name: operator
           args:
-            - --default-topology-name=default-topology  # Kueue topology CRD name
+            - --topology-domain-name=default  # References TopologyDomain resource by name
 ```
+
+**Configuration Details:**
+
+- `--topology-domain-name`: Specifies the name of the TopologyDomain resource to use for validation
+- Operator loads the referenced TopologyDomain at startup
+- All PodCliqueSet topology constraints are validated against this TopologyDomain
+- If the referenced TopologyDomain doesn't exist, operator logs error and topology features are disabled
+
+**Multiple Topologies:**
+
+- Admins can create multiple TopologyDomain resources (e.g., "aws-topology", "on-prem-topology", "test-topology")
+- Operator argument selects which one to use
+- Allows different environments or topology configurations
 
 ## Validation Rules
 
@@ -628,9 +692,16 @@ spec:
 
 The validation webhook ensures topology configuration consistency through the following checks:
 
+### TopologyDomain Reference Validation
+
+- **Operator Configuration**: The TopologyDomain specified in operator's `--topology-domain-name` argument must exist in
+  the cluster
+- **Level Existence**: Referenced PackDomain name must exist in the operator-configured TopologyDomain.Spec.Levels list
+- **Validation Scope**: All topology constraint validation is performed against the single TopologyDomain referenced by
+  the operator
+
 ### Domain Hierarchy Constraints
 
-- **Level Existence**: Referenced PackDomain name must exist in TopologyDomain.Spec.Levels list
 - **Parent-Child Validation**: Child resource PackDomain must be equal to or stricter than parent PackDomain
     - PodCliqueSet → PodCliqueScalingGroup → PodClique constraint hierarchy
     - Stricter means higher index (narrower scope) in TopologyDomain.Spec.Levels list

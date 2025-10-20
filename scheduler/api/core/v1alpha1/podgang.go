@@ -50,10 +50,19 @@ type PodGangList struct {
 
 // PodGangSpec defines the specification of a PodGang.
 type PodGangSpec struct {
+	// add this field
+	// TopologyRef is a reference to the topology in which the PodGang should be scheduled.
+	TopologyRef *NamespacedName `json:"topologyRef,omitempty"`
 	// PodGroups is a list of member pod groups in the PodGang.
 	PodGroups []PodGroup `json:"podgroups"`
+
+	// pcs replica
+	topologyConstraint TopologyConstraint `json:"topologyConstraints"`
+
+	// this fileld should be removed
 	// NetworkPackGroupConfigs is a list of network pack group configurations.
 	NetworkPackGroupConfigs []NetworkPackGroupConfig `json:"networkPackGroupConfigs,omitempty"`
+	// this fileld should be removed
 	// SpreadConstraints defines the constraints for spreading PodGang's filtered by the same label selector, across domains identified by a topology key.
 	// +optional
 	SpreadConstraints []corev1.TopologySpreadConstraint `json:"spreadConstraints,omitempty"`
@@ -74,6 +83,18 @@ type PodGangSpec struct {
 	ReuseReservationRef *NamespacedName `json:"reuseReservationRef,omitempty"`
 }
 
+type typologyConstaints struct {
+	toplogyRef *string `json:"topologyRef,omitempty"`
+}
+
+type TopologyConstraint struct {
+	// PackDomain references a level name from TopologyDomain.Spec.Levels
+	// Defines required topology packing constraint for replicas
+	// Replicas packed together within specified topology level for network locality
+	RequiredPackDomain  *string `json:"packDomain,omitempty"`
+	PreferredPackDomain *string `json:"preferredPackDomain,omitempty"`
+}
+
 // PodGroup defines a set of pods in a PodGang that share the same PodTemplateSpec.
 type PodGroup struct {
 	// Name is the name of the PodGroup.
@@ -84,12 +105,16 @@ type PodGroup struct {
 	// If the MinReplicas is greater than len(PodReferences) then scheduler makes the best effort to schedule as many pods beyond
 	// MinReplicas. However, guaranteed gang scheduling is only provided for MinReplicas.
 	MinReplicas int32 `json:"minReplicas"`
+
+	podTopologyConstraint TopologyConstraint `json:"topologyConstraints"`
 }
 
 // NetworkPackGroupConfig indicates that all the Pods belonging to the constituent PodGroup's should be optimally placed w.r.t cluster's network topology.
 type NetworkPackGroupConfig struct {
 	// PodGroupNames is the list of PodGroup.Name that are part of the network pack group.
 	PodGroupNames []string `json:"podGroupNames"`
+
+	TopologyConstraint TopologyConstraint `json:"topologyConstraints"`
 }
 
 // NamespacedName is a struct that contains the namespace and name of an object.
