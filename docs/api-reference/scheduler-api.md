@@ -31,6 +31,7 @@ _Appears in:_
 | `namespace` _string_ | Namespace is the namespace of the object. |  |  |
 | `name` _string_ | Name is the name of the object. |  |  |
 
+
 #### PackConstraint
 
 PackConstraint defines a single topology packing constraint.
@@ -38,7 +39,6 @@ PackConstraint defines a single topology packing constraint.
 
 
 _Appears in:_
-
 - [TopologyConstraints](#topologyconstraints)
 
 | Field                | Description                                                                                                                                                                                                                           | Default | Validation |
@@ -141,12 +141,12 @@ _Appears in:_
 | `minReplicas` _integer_                                            | MinReplicas is the number of replicas that needs to be gang scheduled.<br />If the MinReplicas is greater than len(PodReferences) then scheduler makes the best effort to schedule as many pods beyond<br />MinReplicas. However, guaranteed gang scheduling is only provided for MinReplicas. |         |            |
 | `topologyConstraint` _[TopologyConstraints](#topologyconstraints)_ | TopologyConstraint defines topology packing constraints for this PodGroup.<br />Enables PodClique-level topology constraints.<br />Updated by operator when PodClique topology constraints change.                                                                                             |         |            |
 
+
 #### TopologyConstraintGroupConfig
 
 TopologyConstraintGroupConfig defines topology constraints for a group of PodGroups.
 
 _Appears in:_
-
 - [PodGangSpec](#podgangspec)
 
 | Field                                                              | Description                                                                                                                                                                                            | Default | Validation |
@@ -154,12 +154,12 @@ _Appears in:_
 | `podGroupNames` _string array_                                     | PodGroupNames is the list of PodGroup names in the topology constraint group.                                                                                                                          |         |            |
 | `topologyConstraint` _[TopologyConstraints](#topologyconstraints)_ | TopologyConstraint defines topology packing constraints for this group.<br />Enables PCSG-level topology constraints.<br />Updated by operator when PodCliqueScalingGroup topology constraints change. |         |            |
 
+
 #### TopologyConstraints
 
 TopologyConstraints defines topology packing constraints with required and preferred levels.
 
 _Appears in:_
-
 - [PodGangSpec](#podgangspec)
 - [PodGroup](#podgroup)
 - [TopologyConstraintGroupConfig](#topologyconstraintgroupconfig)

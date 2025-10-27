@@ -270,11 +270,11 @@ PodCliqueScalingGroupSpec is the specification of the PodCliqueScalingGroup.
 _Appears in:_
 - [PodCliqueScalingGroup](#podcliquescalinggroup)
 
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `replicas` _integer_ | Replicas is the desired number of replicas for the PodCliqueScalingGroup.<br />If not specified, it defaults to 1. | 1 |  |
-| `minAvailable` _integer_ | MinAvailable specifies the minimum number of ready replicas required for a PodCliqueScalingGroup to be considered operational.<br />A PodCliqueScalingGroup replica is considered "ready" when its associated PodCliques have sufficient ready or starting pods.<br />If MinAvailable is breached, it will be used to signal that the PodCliqueScalingGroup is no longer operating with the desired availability.<br />MinAvailable cannot be greater than Replicas. If ScaleConfig is defined then its MinAvailable should not be less than ScaleConfig.MinReplicas.<br />It serves two main purposes:<br />1. Gang Scheduling: MinAvailable defines the minimum number of replicas that are guaranteed to be gang scheduled.<br />2. Gang Termination: MinAvailable is used as a lower bound below which a PodGang becomes a candidate for Gang termination.<br />If not specified, it defaults to 1. | 1 |  |
-| `cliqueNames` _string array_ | CliqueNames is the list of PodClique names that are configured in the<br />matching PodCliqueScalingGroup in PodCliqueSet.Spec.Template.PodCliqueScalingGroupConfigs. |  |  |
+| Field                        | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Default | Validation |
+|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
+| `replicas` _integer_         | Replicas is the desired number of replicas for the PodCliqueScalingGroup.<br />If not specified, it defaults to 1.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | 1       |            |
+| `minAvailable` _integer_     | MinAvailable specifies the minimum number of ready replicas required for a PodCliqueScalingGroup to be considered operational.<br />A PodCliqueScalingGroup replica is considered "ready" when its associated PodCliques have sufficient ready or starting pods.<br />If MinAvailable is breached, it will be used to signal that the PodCliqueScalingGroup is no longer operating with the desired availability.<br />MinAvailable cannot be greater than Replicas. If ScaleConfig is defined then its MinAvailable should not be less than ScaleConfig.MinReplicas.<br /><br />It serves two main purposes:<br />1. Gang Scheduling: MinAvailable defines the minimum number of replicas that are guaranteed to be gang scheduled.<br />2. Gang Termination: MinAvailable is used as a lower bound below which a PodGang becomes a candidate for Gang termination.<br />If not specified, it defaults to 1. | 1       |            |
+| `cliqueNames` _string array_ | CliqueNames is the list of PodClique names that are configured in the<br />matching PodCliqueScalingGroup in PodCliqueSet.Spec.Template.PodCliqueScalingGroupConfigs.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |         |            |
 
 
 #### PodCliqueScalingGroupStatus
@@ -550,6 +550,7 @@ _Appears in:_
 | `current` _string_ | Current captures the current pod name that is a target for update. |  |  |
 | `completed` _string array_ | Completed captures the pod names that have already been updated. |  |  |
 
+
 #### TopologyConstraint
 
 TopologyConstraint defines topology placement requirements.
@@ -557,7 +558,6 @@ TopologyConstraint defines topology placement requirements.
 
 
 _Appears in:_
-
 - [PodCliqueScalingGroupConfig](#podcliquescalinggroupconfig)
 - [PodCliqueSetTemplateSpec](#podcliquesettemplatespec)
 - [PodCliqueTemplateSpec](#podcliquetemplatespec)
@@ -565,6 +565,7 @@ _Appears in:_
 | Field                | Description                                                                                                                                                                                                                                                                                                                                                   | Default | Validation |
 |----------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
 | `packLevel` _string_ | PackLevel specifies the topology level name for grouping replicas.<br />Controls placement constraint for EACH individual replica instance.<br />Example: "rack" means each replica independently placed within one rack.<br />Note: Does NOT constrain all replicas to the same rack together.<br />Different replicas can be in different topology domains. |         |            |
+
 
 #### TopologyDomain
 
@@ -579,12 +580,12 @@ Only one TopologyDomain can exist cluster-wide (enforced by webhook).
 | `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |         |            |
 | `spec` _[TopologyDomainSpec](#topologydomainspec)_                                                                 | Spec defines the topology hierarchy specification.              |         |            |
 
+
 #### TopologyDomainSpec
 
 TopologyDomainSpec defines the topology hierarchy specification.
 
 _Appears in:_
-
 - [TopologyDomain](#topologydomain)
 
 | Field                                            | Description                                                                                                                                                                                              | Default | Validation                            |
@@ -596,7 +597,6 @@ _Appears in:_
 TopologyLevel defines a single level in the topology hierarchy.
 
 _Appears in:_
-
 - [TopologyDomainSpec](#topologydomainspec)
 
 | Field                  | Description                                                                                                                                                                                                | Default | Validation                                                                                                                                                                                     |
