@@ -592,6 +592,7 @@ _Appears in:_
 |--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|---------------------------------------|
 | `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = highest level).<br />This field is immutable after creation. |         | MaxItems: 10 <br />MinItems: 1 <br /> |
 
+
 #### TopologyLevel
 
 TopologyLevel defines a single level in the topology hierarchy.
