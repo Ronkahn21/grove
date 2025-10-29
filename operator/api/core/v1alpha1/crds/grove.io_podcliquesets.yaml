@@ -8867,9 +8867,18 @@ spec:
                               description: |-
                                 PackLevel specifies the topology level name for grouping replicas.
                                 Controls placement constraint for EACH individual replica instance.
+                                Must be one of: region, zone, datacenter, block, rack, host, numa
                                 Example: "rack" means each replica independently placed within one rack.
                                 Note: Does NOT constrain all replicas to the same rack together.
                                 Different replicas can be in different topology domains.
+                              enum:
+                                - region
+                                - zone
+                                - datacenter
+                                - block
+                                - rack
+                                - host
+                                - numa
                               type: string
                           type: object
                       required:
@@ -9448,9 +9457,18 @@ spec:
                               description: |-
                                 PackLevel specifies the topology level name for grouping replicas.
                                 Controls placement constraint for EACH individual replica instance.
+                                Must be one of: region, zone, datacenter, block, rack, host, numa
                                 Example: "rack" means each replica independently placed within one rack.
                                 Note: Does NOT constrain all replicas to the same rack together.
                                 Different replicas can be in different topology domains.
+                              enum:
+                                - region
+                                - zone
+                                - datacenter
+                                - block
+                                - rack
+                                - host
+                                - numa
                               type: string
                           type: object
                       required:
@@ -9484,9 +9502,18 @@ spec:
                         description: |-
                           PackLevel specifies the topology level name for grouping replicas.
                           Controls placement constraint for EACH individual replica instance.
+                          Must be one of: region, zone, datacenter, block, rack, host, numa
                           Example: "rack" means each replica independently placed within one rack.
                           Note: Does NOT constrain all replicas to the same rack together.
                           Different replicas can be in different topology domains.
+                        enum:
+                          - region
+                          - zone
+                          - datacenter
+                          - block
+                          - rack
+                          - host
+                          - numa
                         type: string
                     type: object
                 required:

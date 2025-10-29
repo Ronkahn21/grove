@@ -829,7 +829,7 @@ func (in *TopologyConstraint) DeepCopyInto(out *TopologyConstraint) {
 	*out = *in
 	if in.PackLevel != nil {
 		in, out := &in.PackLevel, &out.PackLevel
-		*out = new(string)
+		*out = new(TopologyLevelName)
 		**out = **in
 	}
 	return

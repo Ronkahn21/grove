@@ -186,11 +186,13 @@ type PodCliqueTemplateSpec struct {
 type TopologyConstraint struct {
 	// PackLevel specifies the topology level name for grouping replicas.
 	// Controls placement constraint for EACH individual replica instance.
+	// Must be one of: region, zone, datacenter, block, rack, host, numa
 	// Example: "rack" means each replica independently placed within one rack.
 	// Note: Does NOT constrain all replicas to the same rack together.
 	// Different replicas can be in different topology domains.
+	// +kubebuilder:validation:Enum=region;zone;datacenter;block;rack;host;numa
 	// +optional
-	PackLevel *string `json:"packLevel,omitempty"`
+	PackLevel *TopologyLevelName `json:"packLevel,omitempty"`
 }
 
 // PodCliqueScalingGroupConfig is a group of PodClique's that are scaled together.
