@@ -47,7 +47,7 @@ spec:
                 levels:
                   description: |-
                     Levels is an ordered list of topology levels from broadest to narrowest scope.
-                    The order in this list defines the hierarchy (index 0 = highest level).
+                    The order in this list defines the hierarchy (index 0 = broadest level).
                     This field is immutable after creation.
                   items:
                     description: TopologyLevel defines a single level in the topology
