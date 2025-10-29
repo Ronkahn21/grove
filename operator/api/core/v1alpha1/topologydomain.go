@@ -54,20 +54,33 @@ type TopologyDomainSpec struct {
 	// This field is immutable after creation.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="levels list is immutable"
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:MaxItems=100
 	Levels []TopologyLevel `json:"levels"`
 }
+type TopologyName string
+
+const (
+	// TopologyLevelZone represents the zone level in the topology hierarchy.
+	TopologyLevelZone TopologyName = "zone"
+	// TopologyLevelRegion represents the region level in the topology hierarchy.
+	TopologyLevelRegion TopologyName = "region"
+	// TopologyLevelRack represents the rack level in the topology hierarchy.
+	TopologyLevelRack TopologyName = "rack"
+	// TopologyLevelHost represents the host level in the topology hierarchy.
+	TopologyLevelHost TopologyName = "host"
+	// TopologyLevelDatacenter represents the datacenter level in the topology hierarchy.
+	TopologyLevelDatacenter TopologyName = "datacenter"
+)
 
 // TopologyLevel defines a single level in the topology hierarchy.
 type TopologyLevel struct {
-	// Name is the level identifier used in TopologyConstraint references.
 	// Must be a valid DNS label (lowercase alphanumeric with hyphens).
 	// Examples: "zone", "rack", "host"
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	Name string `json:"name"`
+	// +kubebuilder:validation:Enum=`zone`,`region`,`rack`,`host`,`datacenter`,`
+	Name TopologyName `json:"name"`
 
 	// TopologyKey is the node label key that identifies this topology domain.
 	// Must be a valid Kubernetes label key (qualified name).
@@ -75,7 +88,6 @@ type TopologyLevel struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=316
-	// +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$`
 	TopologyKey string `json:"topologyKey"`
 
 	// Description provides human-readable information about this level.
