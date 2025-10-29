@@ -43,14 +43,13 @@ type TopologyDomain struct {
 type TopologyDomainList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	// Items is a slice of TopologyDomains.
 	Items []TopologyDomain `json:"items"`
 }
 
 // TopologyDomainSpec defines the topology hierarchy specification.
 type TopologyDomainSpec struct {
 	// Levels is an ordered list of topology levels from broadest to narrowest scope.
-	// The order in this list defines the hierarchy (index 0 = highest level).
+	// The order in this list defines the hierarchy (index 0 = broadest level).
 	// This field is immutable after creation.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="levels list is immutable"
 	// +kubebuilder:validation:MinItems=1
