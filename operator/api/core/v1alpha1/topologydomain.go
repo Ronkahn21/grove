@@ -54,33 +54,39 @@ type TopologyDomainSpec struct {
 	// This field is immutable after creation.
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="levels list is immutable"
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:MaxItems=7
 	Levels []TopologyLevel `json:"levels"`
 }
-type TopologyName string
+
+// TopologyLevelName represents a predefined topology level in the hierarchy.
+// Topology ordering (broadest to narrowest):
+// Region > Zone > DataCenter > Block > Rack > Host > Numa
+type TopologyLevelName string
 
 const (
-	// TopologyLevelZone represents the zone level in the topology hierarchy.
-	TopologyLevelZone TopologyName = "zone"
 	// TopologyLevelRegion represents the region level in the topology hierarchy.
-	TopologyLevelRegion TopologyName = "region"
+	TopologyLevelRegion TopologyLevelName = "region"
+	// TopologyLevelZone represents the zone level in the topology hierarchy.
+	TopologyLevelZone TopologyLevelName = "zone"
+	// TopologyLevelDataCenter represents the datacenter level in the topology hierarchy.
+	TopologyLevelDataCenter TopologyLevelName = "datacenter"
+	// TopologyLevelBlock represents the block level in the topology hierarchy.
+	TopologyLevelBlock TopologyLevelName = "block"
 	// TopologyLevelRack represents the rack level in the topology hierarchy.
-	TopologyLevelRack TopologyName = "rack"
+	TopologyLevelRack TopologyLevelName = "rack"
 	// TopologyLevelHost represents the host level in the topology hierarchy.
-	TopologyLevelHost TopologyName = "host"
-	// TopologyLevelDatacenter represents the datacenter level in the topology hierarchy.
-	TopologyLevelDatacenter TopologyName = "datacenter"
+	TopologyLevelHost TopologyLevelName = "host"
+	// TopologyLevelNuma represents the numa level in the topology hierarchy.
+	TopologyLevelNuma TopologyLevelName = "numa"
 )
 
 // TopologyLevel defines a single level in the topology hierarchy.
 type TopologyLevel struct {
-	// Must be a valid DNS label (lowercase alphanumeric with hyphens).
-	// Examples: "zone", "rack", "host"
+	// Name is the predefined level identifier used in TopologyConstraint references.
+	// Must be one of: region, zone, datacenter, block, rack, host, numa
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Enum=`zone`,`region`,`rack`,`host`,`datacenter`,`
-	Name TopologyName `json:"name"`
+	// +kubebuilder:validation:Enum=region;zone;datacenter;block;rack;host;numa
+	Name TopologyLevelName `json:"name"`
 
 	// TopologyKey is the node label key that identifies this topology domain.
 	// Must be a valid Kubernetes label key (qualified name).
@@ -88,10 +94,6 @@ type TopologyLevel struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=316
+	// +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$`
 	TopologyKey string `json:"topologyKey"`
-
-	// Description provides human-readable information about this level.
-	// +kubebuilder:validation:MaxLength=1024
-	// +optional
-	Description string `json:"description,omitempty"`
 }

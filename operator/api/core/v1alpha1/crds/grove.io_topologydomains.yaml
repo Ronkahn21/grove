@@ -53,19 +53,18 @@ spec:
                     description: TopologyLevel defines a single level in the topology
                       hierarchy.
                     properties:
-                      description:
-                        description: Description provides human-readable information
-                          about this level.
-                        maxLength: 1024
-                        type: string
                       name:
                         description: |-
-                          Name is the level identifier used in TopologyConstraint references.
-                          Must be a valid DNS label (lowercase alphanumeric with hyphens).
-                          Examples: "zone", "rack", "host"
-                        maxLength: 63
-                        minLength: 1
-                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                          Name is the predefined level identifier used in TopologyConstraint references.
+                          Must be one of: region, zone, datacenter, block, rack, host, numa
+                        enum:
+                          - region
+                          - zone
+                          - datacenter
+                          - block
+                          - rack
+                          - host
+                          - numa
                         type: string
                       topologyKey:
                         description: |-
@@ -80,7 +79,7 @@ spec:
                       - name
                       - topologyKey
                     type: object
-                  maxItems: 10
+                  maxItems: 7
                   minItems: 1
                   type: array
                   x-kubernetes-validations:
