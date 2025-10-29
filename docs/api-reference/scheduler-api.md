@@ -82,13 +82,13 @@ PodGangSpec defines the specification of a PodGang.
 _Appears in:_
 - [PodGang](#podgang)
 
-| Field                                                                                                    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Default | Validation |
-|----------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
-| `podgroups` _[PodGroup](#podgroup) array_                                                                | PodGroups is a list of member pod groups in the PodGang.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |         |            |
-| `topologyConstraint` _[TopologyConstraint](#topologyconstraint)_                                         | TopologyConstraint defines topology packing constraints for entire pod gang.<br />Translated from PodCliqueSet.TopologyConstraint.<br />Updated by operator on each reconciliation when PodCliqueSet topology constraints change.                                                                                                                                                                                                                                                                                                                                                                           |         |            |
-| `topologyConstraintGroupConfigs` _[TopologyConstraintGroupConfig](#topologyconstraintgroupconfig) array_ | TopologyConstraintGroupConfigs defines groups of PodGroups for topology-aware placement.<br />Enhanced with topology constraints for PCSG-level packing.<br />Updated by operator on each reconciliation when PCSG topology constraints change.                                                                                                                                                                                                                                                                                                                                                             |         |            |
-| `priorityClassName` _string_                                                                             | PriorityClassName is the name of the PriorityClass for the PodGang.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |         |            |
-| `reuseReservationRef` _[NamespacedName](#namespacedname)_                                                | ReuseReservationRef holds the reference to another PodGang resource scheduled previously.<br />During updates, an operator can suggest to reuse the reservation of the previous PodGang for a newer version of the<br />PodGang resource. This is a suggestion for the scheduler and not a requirement that must be met. If the scheduler plugin<br />finds that the reservation done previously was network optimised and there are no better alternatives available, then it<br />will reuse the reservation. If there are better alternatives available, then the scheduler will ignore this suggestion. |         |            |
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `podgroups` _[PodGroup](#podgroup) array_ | PodGroups is a list of member pod groups in the PodGang. |  |  |
+| `topologyConstraint` _[TopologyConstraint](#topologyconstraint)_ | TopologyConstraint defines topology packing constraints for entire pod gang.<br />Translated from PodCliqueSet.TopologyConstraint.<br />Updated by operator on each reconciliation when PodCliqueSet topology constraints change. |  |  |
+| `topologyConstraintGroupConfigs` _[TopologyConstraintGroupConfig](#topologyconstraintgroupconfig) array_ | TopologyConstraintGroupConfigs defines groups of PodGroups for topology-aware placement.<br />Enhanced with topology constraints for PCSG-level packing.<br />Updated by operator on each reconciliation when PCSG topology constraints change. |  |  |
+| `priorityClassName` _string_ | PriorityClassName is the name of the PriorityClass for the PodGang. |  |  |
+| `reuseReservationRef` _[NamespacedName](#namespacedname)_ | ReuseReservationRef holds the reference to another PodGang resource scheduled previously.<br />During updates, an operator can suggest to reuse the reservation of the previous PodGang for a newer version of the<br />PodGang resource. This is a suggestion for the scheduler and not a requirement that must be met. If the scheduler plugin<br />finds that the reservation done previously was network optimised and there are no better alternatives available, then it<br />will reuse the reservation. If there are better alternatives available, then the scheduler will ignore this suggestion. |  |  |
 
 
 #### PodGangStatus
@@ -120,53 +120,63 @@ PodGroup defines a set of pods in a PodGang that share the same PodTemplateSpec.
 _Appears in:_
 - [PodGangSpec](#podgangspec)
 
-| Field                                                            | Description                                                                                                                                                                                                                                                                                    | Default | Validation |
-|------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
-| `name` _string_                                                  | Name is the name of the PodGroup.                                                                                                                                                                                                                                                              |         |            |
-| `podReferences` _[NamespacedName](#namespacedname) array_        | PodReferences is a list of references to the Pods that are part of this group.                                                                                                                                                                                                                 |         |            |
-| `minReplicas` _integer_                                          | MinReplicas is the number of replicas that needs to be gang scheduled.<br />If the MinReplicas is greater than len(PodReferences) then scheduler makes the best effort to schedule as many pods beyond<br />MinReplicas. However, guaranteed gang scheduling is only provided for MinReplicas. |         |            |
-| `topologyConstraint` _[TopologyConstraint](#topologyconstraint)_ | TopologyConstraint defines topology packing constraints for this PodGroup.<br />Enables PodClique-level topology constraints.<br />Updated by operator when PodClique topology constraints change.                                                                                             |         |            |
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name is the name of the PodGroup. |  |  |
+| `podReferences` _[NamespacedName](#namespacedname) array_ | PodReferences is a list of references to the Pods that are part of this group. |  |  |
+| `minReplicas` _integer_ | MinReplicas is the number of replicas that needs to be gang scheduled.<br />If the MinReplicas is greater than len(PodReferences) then scheduler makes the best effort to schedule as many pods beyond<br />MinReplicas. However, guaranteed gang scheduling is only provided for MinReplicas. |  |  |
+| `topologyConstraint` _[TopologyConstraint](#topologyconstraint)_ | TopologyConstraint defines topology packing constraints for this PodGroup.<br />Enables PodClique-level topology constraints.<br />Updated by operator when PodClique topology constraints change. |  |  |
+
 
 #### TopologyConstraint
 
+
+
 TopologyConstraint defines topology packing constraints with required and preferred levels.
 
-_Appears in:_
 
+
+_Appears in:_
 - [PodGangSpec](#podgangspec)
 - [PodGroup](#podgroup)
 - [TopologyConstraintGroupConfig](#topologyconstraintgroupconfig)
 
-| Field                                                                | Description                                                                                                                                                      | Default | Validation |
-|----------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
-| `packConstraint` _[TopologyPackConstraint](#topologypackconstraint)_ | PackConstraint defines topology packing constraint with required and preferred levels.<br />Operator translates user's level name to corresponding topologyKeys. |         |            |
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `packConstraint` _[TopologyPackConstraint](#topologypackconstraint)_ | PackConstraint defines topology packing constraint with required and preferred levels.<br />Operator translates user's level name to corresponding topologyKeys. |  |  |
 
 
 #### TopologyConstraintGroupConfig
 
+
+
 TopologyConstraintGroupConfig defines topology constraints for a group of PodGroups.
+
+
 
 _Appears in:_
 - [PodGangSpec](#podgangspec)
 
-| Field                                                            | Description                                                                                                                                                                                            | Default | Validation |
-|------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
-| `podGroupNames` _string array_                                   | PodGroupNames is the list of PodGroup names in the topology constraint group.                                                                                                                          |         |            |
-| `topologyConstraint` _[TopologyConstraint](#topologyconstraint)_ | TopologyConstraint defines topology packing constraints for this group.<br />Enables PCSG-level topology constraints.<br />Updated by operator when PodCliqueScalingGroup topology constraints change. |         |            |
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `podGroupNames` _string array_ | PodGroupNames is the list of PodGroup names in the topology constraint group. |  |  |
+| `topologyConstraint` _[TopologyConstraint](#topologyconstraint)_ | TopologyConstraint defines topology packing constraints for this group.<br />Enables PCSG-level topology constraints.<br />Updated by operator when PodCliqueScalingGroup topology constraints change. |  |  |
+
 
 #### TopologyPackConstraint
+
+
 
 TopologyPackConstraint defines a topology packing constraint.
 
 
 
 _Appears in:_
-
 - [TopologyConstraint](#topologyconstraint)
 
-| Field                | Description                                                                                                                                                                                                                                                       | Default | Validation |
-|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------|
-| `required` _string_  | Required defines topology constraint that must be satisfied.<br />Holds topologyKey (not level name) translated from user's packLevel specification.<br />Example: "topology.kubernetes.io/rack"                                                                  |         |            |
-| `preferred` _string_ | Preferred defines best-effort topology constraint.<br />Auto-generated by operator using strictest level topologyKey for optimization.<br />Scheduler can fallback to less strict levels if preferred cannot be satisfied.<br />Example: "kubernetes.io/hostname" |         |            |
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `required` _string_ | Required defines topology constraint that must be satisfied.<br />Holds topologyKey (not level name) translated from user's packLevel specification.<br />Example: "topology.kubernetes.io/rack" |  |  |
+| `preferred` _string_ | Preferred defines best-effort topology constraint.<br />Auto-generated by operator using strictest level topologyKey for optimization.<br />Scheduler can fallback to less strict levels if preferred cannot be satisfied.<br />Example: "kubernetes.io/hostname" |  |  |
 
 

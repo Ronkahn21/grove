@@ -8872,13 +8872,13 @@ spec:
                                 Note: Does NOT constrain all replicas to the same rack together.
                                 Different replicas can be in different topology domains.
                               enum:
-                                - region
-                                - zone
-                                - datacenter
-                                - block
-                                - rack
-                                - host
-                                - numa
+                              - region
+                              - zone
+                              - datacenter
+                              - block
+                              - rack
+                              - host
+                              - numa
                               type: string
                           type: object
                       required:
@@ -9462,13 +9462,13 @@ spec:
                                 Note: Does NOT constrain all replicas to the same rack together.
                                 Different replicas can be in different topology domains.
                               enum:
-                                - region
-                                - zone
-                                - datacenter
-                                - block
-                                - rack
-                                - host
-                                - numa
+                              - region
+                              - zone
+                              - datacenter
+                              - block
+                              - rack
+                              - host
+                              - numa
                               type: string
                           type: object
                       required:
@@ -9507,13 +9507,13 @@ spec:
                           Note: Does NOT constrain all replicas to the same rack together.
                           Different replicas can be in different topology domains.
                         enum:
-                          - region
-                          - zone
-                          - datacenter
-                          - block
-                          - rack
-                          - host
-                          - numa
+                        - region
+                        - zone
+                        - datacenter
+                        - block
+                        - rack
+                        - host
+                        - numa
                         type: string
                     type: object
                 required:

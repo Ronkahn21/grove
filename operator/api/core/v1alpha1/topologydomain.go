@@ -43,7 +43,7 @@ type TopologyDomain struct {
 type TopologyDomainList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items []TopologyDomain `json:"items"`
+	Items           []TopologyDomain `json:"items"`
 }
 
 // TopologyDomainSpec defines the topology hierarchy specification.

@@ -200,7 +200,7 @@ spec:
                           type: object
                       type: object
                   required:
-                    - podGroupNames
+                  - podGroupNames
                   type: object
                 type: array
             required:
