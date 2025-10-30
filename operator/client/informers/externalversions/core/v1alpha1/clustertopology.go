@@ -32,70 +32,70 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// TopologyDomainInformer provides access to a shared informer and lister for
-// TopologyDomains.
-type TopologyDomainInformer interface {
+// ClusterTopologyInformer provides access to a shared informer and lister for
+// ClusterTopologies.
+type ClusterTopologyInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() corev1alpha1.TopologyDomainLister
+	Lister() corev1alpha1.ClusterTopologyLister
 }
 
-type topologyDomainInformer struct {
+type clusterTopologyInformer struct {
 	factory          internalinterfaces.SharedInformerFactory
 	tweakListOptions internalinterfaces.TweakListOptionsFunc
 }
 
-// NewTopologyDomainInformer constructs a new informer for TopologyDomain type.
+// NewClusterTopologyInformer constructs a new informer for ClusterTopology type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewTopologyDomainInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewFilteredTopologyDomainInformer(client, resyncPeriod, indexers, nil)
+func NewClusterTopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
+	return NewFilteredClusterTopologyInformer(client, resyncPeriod, indexers, nil)
 }
 
-// NewFilteredTopologyDomainInformer constructs a new informer for TopologyDomain type.
+// NewFilteredClusterTopologyInformer constructs a new informer for ClusterTopology type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
-func NewFilteredTopologyDomainInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
+func NewFilteredClusterTopologyInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
 	return cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.GroveV1alpha1().TopologyDomains().List(context.Background(), options)
+				return client.GroveV1alpha1().ClusterTopologies().List(context.Background(), options)
 			},
 			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.GroveV1alpha1().TopologyDomains().Watch(context.Background(), options)
+				return client.GroveV1alpha1().ClusterTopologies().Watch(context.Background(), options)
 			},
 			ListWithContextFunc: func(ctx context.Context, options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.GroveV1alpha1().TopologyDomains().List(ctx, options)
+				return client.GroveV1alpha1().ClusterTopologies().List(ctx, options)
 			},
 			WatchFuncWithContext: func(ctx context.Context, options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
 					tweakListOptions(&options)
 				}
-				return client.GroveV1alpha1().TopologyDomains().Watch(ctx, options)
+				return client.GroveV1alpha1().ClusterTopologies().Watch(ctx, options)
 			},
 		},
-		&apicorev1alpha1.TopologyDomain{},
+		&apicorev1alpha1.ClusterTopology{},
 		resyncPeriod,
 		indexers,
 	)
 }
 
-func (f *topologyDomainInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewFilteredTopologyDomainInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
+func (f *clusterTopologyInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
+	return NewFilteredClusterTopologyInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
-func (f *topologyDomainInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apicorev1alpha1.TopologyDomain{}, f.defaultInformer)
+func (f *clusterTopologyInformer) Informer() cache.SharedIndexInformer {
+	return f.factory.InformerFor(&apicorev1alpha1.ClusterTopology{}, f.defaultInformer)
 }
 
-func (f *topologyDomainInformer) Lister() corev1alpha1.TopologyDomainLister {
-	return corev1alpha1.NewTopologyDomainLister(f.Informer().GetIndexer())
+func (f *clusterTopologyInformer) Lister() corev1alpha1.ClusterTopologyLister {
+	return corev1alpha1.NewClusterTopologyLister(f.Informer().GetIndexer())
 }

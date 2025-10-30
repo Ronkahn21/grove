@@ -8863,9 +8863,9 @@ spec:
                             TopologyConstraint defines topology placement requirements for PodClique.
                             Must be equal to or stricter than parent resource constraints.
                           properties:
-                            packLevel:
+                            packDomain:
                               description: |-
-                                PackLevel specifies the topology level name for grouping replicas.
+                                PackDomain specifies the topology domain for grouping replicas.
                                 Controls placement constraint for EACH individual replica instance.
                                 Must be one of: region, zone, datacenter, block, rack, host, numa
                                 Example: "rack" means each replica independently placed within one rack.
@@ -9453,9 +9453,9 @@ spec:
                             TopologyConstraint defines topology placement requirements for PodCliqueScalingGroup.
                             Must be equal to or stricter than parent PodCliqueSet constraints.
                           properties:
-                            packLevel:
+                            packDomain:
                               description: |-
-                                PackLevel specifies the topology level name for grouping replicas.
+                                PackDomain specifies the topology domain for grouping replicas.
                                 Controls placement constraint for EACH individual replica instance.
                                 Must be one of: region, zone, datacenter, block, rack, host, numa
                                 Example: "rack" means each replica independently placed within one rack.
@@ -9498,9 +9498,9 @@ spec:
                     description: TopologyConstraint defines topology placement requirements
                       for PodCliqueSet.
                     properties:
-                      packLevel:
+                      packDomain:
                         description: |-
-                          PackLevel specifies the topology level name for grouping replicas.
+                          PackDomain specifies the topology domain for grouping replicas.
                           Controls placement constraint for EACH individual replica instance.
                           Must be one of: region, zone, datacenter, block, rack, host, numa
                           Example: "rack" means each replica independently placed within one rack.

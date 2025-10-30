@@ -193,8 +193,8 @@ type AuthorizerConfig struct {
 type TopologyConfiguration struct {
 	// Enabled indicates whether topology-aware scheduling is enabled.
 	Enabled bool `json:"enabled"`
-	// TopologyDomainName is the name of the TopologyDomain resource to use.
+	// Name is the name of the ClusterTopology resource to use.
 	// If not specified, defaults to "grove-topology".
 	// +optional
-	TopologyDomainName string `json:"topologyDomainName,omitempty"`
+	Name string `json:"name,omitempty"`
 }

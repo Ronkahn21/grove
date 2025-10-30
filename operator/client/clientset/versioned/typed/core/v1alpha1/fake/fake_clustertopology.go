@@ -24,26 +24,26 @@ import (
 	gentype "k8s.io/client-go/gentype"
 )
 
-// fakeTopologyDomains implements TopologyDomainInterface
-type fakeTopologyDomains struct {
-	*gentype.FakeClientWithList[*v1alpha1.TopologyDomain, *v1alpha1.TopologyDomainList]
+// fakeClusterTopologies implements ClusterTopologyInterface
+type fakeClusterTopologies struct {
+	*gentype.FakeClientWithList[*v1alpha1.ClusterTopology, *v1alpha1.ClusterTopologyList]
 	Fake *FakeGroveV1alpha1
 }
 
-func newFakeTopologyDomains(fake *FakeGroveV1alpha1) corev1alpha1.TopologyDomainInterface {
-	return &fakeTopologyDomains{
-		gentype.NewFakeClientWithList[*v1alpha1.TopologyDomain, *v1alpha1.TopologyDomainList](
+func newFakeClusterTopologies(fake *FakeGroveV1alpha1) corev1alpha1.ClusterTopologyInterface {
+	return &fakeClusterTopologies{
+		gentype.NewFakeClientWithList[*v1alpha1.ClusterTopology, *v1alpha1.ClusterTopologyList](
 			fake.Fake,
 			"",
-			v1alpha1.SchemeGroupVersion.WithResource("topologydomains"),
-			v1alpha1.SchemeGroupVersion.WithKind("TopologyDomain"),
-			func() *v1alpha1.TopologyDomain { return &v1alpha1.TopologyDomain{} },
-			func() *v1alpha1.TopologyDomainList { return &v1alpha1.TopologyDomainList{} },
-			func(dst, src *v1alpha1.TopologyDomainList) { dst.ListMeta = src.ListMeta },
-			func(list *v1alpha1.TopologyDomainList) []*v1alpha1.TopologyDomain {
+			v1alpha1.SchemeGroupVersion.WithResource("clustertopologies"),
+			v1alpha1.SchemeGroupVersion.WithKind("ClusterTopology"),
+			func() *v1alpha1.ClusterTopology { return &v1alpha1.ClusterTopology{} },
+			func() *v1alpha1.ClusterTopologyList { return &v1alpha1.ClusterTopologyList{} },
+			func(dst, src *v1alpha1.ClusterTopologyList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.ClusterTopologyList) []*v1alpha1.ClusterTopology {
 				return gentype.ToPointerSlice(list.Items)
 			},
-			func(list *v1alpha1.TopologyDomainList, items []*v1alpha1.TopologyDomain) {
+			func(list *v1alpha1.ClusterTopologyList, items []*v1alpha1.ClusterTopology) {
 				list.Items = gentype.FromPointerSlice(items)
 			},
 		),

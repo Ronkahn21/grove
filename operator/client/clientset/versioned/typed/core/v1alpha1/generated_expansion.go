@@ -18,10 +18,10 @@ limitations under the License.
 
 package v1alpha1
 
+type ClusterTopologyExpansion interface{}
+
 type PodCliqueExpansion interface{}
 
 type PodCliqueScalingGroupExpansion interface{}
 
 type PodCliqueSetExpansion interface{}
-
-type TopologyDomainExpansion interface{}

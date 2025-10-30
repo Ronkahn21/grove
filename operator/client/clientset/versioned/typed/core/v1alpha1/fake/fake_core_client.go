@@ -28,6 +28,10 @@ type FakeGroveV1alpha1 struct {
 	*testing.Fake
 }
 
+func (c *FakeGroveV1alpha1) ClusterTopologies() v1alpha1.ClusterTopologyInterface {
+	return newFakeClusterTopologies(c)
+}
+
 func (c *FakeGroveV1alpha1) PodCliques(namespace string) v1alpha1.PodCliqueInterface {
 	return newFakePodCliques(c, namespace)
 }
@@ -38,10 +42,6 @@ func (c *FakeGroveV1alpha1) PodCliqueScalingGroups(namespace string) v1alpha1.Po
 
 func (c *FakeGroveV1alpha1) PodCliqueSets(namespace string) v1alpha1.PodCliqueSetInterface {
 	return newFakePodCliqueSets(c, namespace)
-}
-
-func (c *FakeGroveV1alpha1) TopologyDomains() v1alpha1.TopologyDomainInterface {
-	return newFakeTopologyDomains(c)
 }
 
 // RESTClient returns a RESTClient that is used to communicate

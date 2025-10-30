@@ -25,24 +25,24 @@ import (
 	cache "k8s.io/client-go/tools/cache"
 )
 
-// TopologyDomainLister helps list TopologyDomains.
+// ClusterTopologyLister helps list ClusterTopologies.
 // All objects returned here must be treated as read-only.
-type TopologyDomainLister interface {
-	// List lists all TopologyDomains in the indexer.
+type ClusterTopologyLister interface {
+	// List lists all ClusterTopologies in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*corev1alpha1.TopologyDomain, err error)
-	// Get retrieves the TopologyDomain from the index for a given name.
+	List(selector labels.Selector) (ret []*corev1alpha1.ClusterTopology, err error)
+	// Get retrieves the ClusterTopology from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*corev1alpha1.TopologyDomain, error)
-	TopologyDomainListerExpansion
+	Get(name string) (*corev1alpha1.ClusterTopology, error)
+	ClusterTopologyListerExpansion
 }
 
-// topologyDomainLister implements the TopologyDomainLister interface.
-type topologyDomainLister struct {
-	listers.ResourceIndexer[*corev1alpha1.TopologyDomain]
+// clusterTopologyLister implements the ClusterTopologyLister interface.
+type clusterTopologyLister struct {
+	listers.ResourceIndexer[*corev1alpha1.ClusterTopology]
 }
 
-// NewTopologyDomainLister returns a new TopologyDomainLister.
-func NewTopologyDomainLister(indexer cache.Indexer) TopologyDomainLister {
-	return &topologyDomainLister{listers.New[*corev1alpha1.TopologyDomain](indexer, corev1alpha1.Resource("topologydomain"))}
+// NewClusterTopologyLister returns a new ClusterTopologyLister.
+func NewClusterTopologyLister(indexer cache.Indexer) ClusterTopologyLister {
+	return &clusterTopologyLister{listers.New[*corev1alpha1.ClusterTopology](indexer, corev1alpha1.Resource("clustertopology"))}
 }
