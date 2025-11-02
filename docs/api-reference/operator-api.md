@@ -865,23 +865,6 @@ _Appears in:_
 | `metrics` _[Server](#server)_ | Metrics is the configuration for serving the metrics endpoint. |  |  |
 
 
-#### TopologyConfiguration
-
-
-
-TopologyConfiguration defines the configuration for topology-aware scheduling.
-
-
-
-_Appears in:_
-- [OperatorConfiguration](#operatorconfiguration)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `enabled` _boolean_ | Enabled indicates whether topology-aware scheduling is enabled. |  |  |
-| `name` _string_ | Name is the name of the ClusterTopology resource to use.<br />If not specified, defaults to "grove-topology". |  |  |
-
-
 #### WebhookServer
 
 
