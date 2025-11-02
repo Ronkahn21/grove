@@ -9,7 +9,6 @@
 
 
 ### Resource Types
-
 - [ClusterTopology](#clustertopology)
 - [PodClique](#podclique)
 - [PodCliqueScalingGroup](#podcliquescalinggroup)
@@ -54,29 +53,31 @@ _Appears in:_
 | `CliqueStartupTypeInOrder` | CliqueStartupTypeInOrder defines that the cliques should be started in the order they are defined in the PodGang Cliques slice.<br /> |
 | `CliqueStartupTypeExplicit` | CliqueStartupTypeExplicit defines that the cliques should be started after the cliques defined in PodClique.StartsAfter have started.<br /> |
 
+
 #### ClusterTopology
 
 ClusterTopology defines the topology hierarchy for the cluster.
 This resource is immutable after creation.
 
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `grove.io/v1alpha1` | | |
-| `kind` _string_ | `ClusterTopology` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[ClusterTopologySpec](#clustertopologyspec)_ | Spec defines the topology hierarchy specification. |  |  |
+| Field                                                                                                              | Description                                                     | Default | Validation |
+|--------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------|---------|------------|
+| `apiVersion` _string_                                                                                              | `grove.io/v1alpha1`                                             |         |            |
+| `kind` _string_                                                                                                    | `ClusterTopology`                                               |         |            |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |         |            |
+| `spec` _[ClusterTopologySpec](#clustertopologyspec)_                                                               | Spec defines the topology hierarchy specification.              |         |            |
+
 
 #### ClusterTopologySpec
 
 ClusterTopologySpec defines the topology hierarchy specification.
 
 _Appears in:_
-
 - [ClusterTopology](#clustertopology)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MaxItems: 7 <br />MinItems: 1 <br /> |
+
 
 #### ErrorCode
 
@@ -617,12 +618,12 @@ _Appears in:_
 | `host`       | TopologyDomainHost represents the host level in the topology hierarchy.<br />             |
 | `numa`       | TopologyDomainNuma represents the numa level in the topology hierarchy.<br />             |
 
+
 #### TopologyLevel
 
 TopologyLevel defines a single level in the topology hierarchy.
 
 _Appears in:_
-
 - [ClusterTopologySpec](#clustertopologyspec)
 
 | Field                                        | Description                                                                                                                                                                                        | Default | Validation                                                                      |
