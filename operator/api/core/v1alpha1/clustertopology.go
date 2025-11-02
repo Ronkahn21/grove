@@ -28,7 +28,6 @@ import (
 
 // ClusterTopology defines the topology hierarchy for the cluster.
 // This resource is immutable after creation.
-// Only one ClusterTopology can exist cluster-wide (enforced by webhook).
 type ClusterTopology struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

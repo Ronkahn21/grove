@@ -22,7 +22,6 @@ spec:
         description: |-
           ClusterTopology defines the topology hierarchy for the cluster.
           This resource is immutable after creation.
-          Only one ClusterTopology can exist cluster-wide (enforced by webhook).
         properties:
           apiVersion:
             description: |-
