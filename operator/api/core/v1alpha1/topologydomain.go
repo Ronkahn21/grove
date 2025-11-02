@@ -51,7 +51,6 @@ type ClusterTopologySpec struct {
 	// Levels is an ordered list of topology levels from broadest to narrowest scope.
 	// The order in this list defines the hierarchy (index 0 = broadest level).
 	// This field is immutable after creation.
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="levels list is immutable"
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=7
 	Levels []TopologyLevel `json:"levels"`
@@ -63,20 +62,20 @@ type ClusterTopologySpec struct {
 type TopologyDomain string
 
 const (
-	// TopologyLevelRegion represents the region level in the topology hierarchy.
-	TopologyLevelRegion TopologyDomain = "region"
-	// TopologyLevelZone represents the zone level in the topology hierarchy.
-	TopologyLevelZone TopologyDomain = "zone"
-	// TopologyLevelDataCenter represents the datacenter level in the topology hierarchy.
-	TopologyLevelDataCenter TopologyDomain = "datacenter"
-	// TopologyLevelBlock represents the block level in the topology hierarchy.
-	TopologyLevelBlock TopologyDomain = "block"
-	// TopologyLevelRack represents the rack level in the topology hierarchy.
-	TopologyLevelRack TopologyDomain = "rack"
-	// TopologyLevelHost represents the host level in the topology hierarchy.
-	TopologyLevelHost TopologyDomain = "host"
-	// TopologyLevelNuma represents the numa level in the topology hierarchy.
-	TopologyLevelNuma TopologyDomain = "numa"
+	// TopologyDomainRegion represents the region level in the topology hierarchy.
+	TopologyDomainRegion TopologyDomain = "region"
+	// TopologyDomainZone represents the zone level in the topology hierarchy.
+	TopologyDomainZone TopologyDomain = "zone"
+	// TopologyDomainDataCenter represents the datacenter level in the topology hierarchy.
+	TopologyDomainDataCenter TopologyDomain = "datacenter"
+	// TopologyDomainBlock represents the block level in the topology hierarchy.
+	TopologyDomainBlock TopologyDomain = "block"
+	// TopologyDomainRack represents the rack level in the topology hierarchy.
+	TopologyDomainRack TopologyDomain = "rack"
+	// TopologyDomainHost represents the host level in the topology hierarchy.
+	TopologyDomainHost TopologyDomain = "host"
+	// TopologyDomainNuma represents the numa level in the topology hierarchy.
+	TopologyDomainNuma TopologyDomain = "numa"
 )
 
 // TopologyLevel defines a single level in the topology hierarchy.
@@ -92,6 +91,6 @@ type TopologyLevel struct {
 	// Examples: "topology.kubernetes.io/zone", "kubernetes.io/hostname"
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:MaxLength=6
+	// +kubebuilder:validation:MaxLength=63
 	Key string `json:"key"`
 }

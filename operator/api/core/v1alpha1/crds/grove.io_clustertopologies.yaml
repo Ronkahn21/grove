@@ -71,7 +71,7 @@ spec:
                         Key is the node label key that identifies this topology domain.
                         Must be a valid Kubernetes label key (qualified name).
                         Examples: "topology.kubernetes.io/zone", "kubernetes.io/hostname"
-                      maxLength: 6
+                      maxLength: 63
                       minLength: 1
                       type: string
                   required:
@@ -81,9 +81,6 @@ spec:
                 maxItems: 7
                 minItems: 1
                 type: array
-                x-kubernetes-validations:
-                - message: levels list is immutable
-                  rule: self == oldSelf
             required:
             - levels
             type: object
