@@ -9,10 +9,11 @@
 
 
 ### Resource Types
+
+- [ClusterTopology](#clustertopology)
 - [PodClique](#podclique)
 - [PodCliqueScalingGroup](#podcliquescalinggroup)
 - [PodCliqueSet](#podcliqueset)
-- [TopologyDomain](#topologydomain)
 
 
 
@@ -53,6 +54,29 @@ _Appears in:_
 | `CliqueStartupTypeInOrder` | CliqueStartupTypeInOrder defines that the cliques should be started in the order they are defined in the PodGang Cliques slice.<br /> |
 | `CliqueStartupTypeExplicit` | CliqueStartupTypeExplicit defines that the cliques should be started after the cliques defined in PodClique.StartsAfter have started.<br /> |
 
+#### ClusterTopology
+
+ClusterTopology defines the topology hierarchy for the cluster.
+This resource is immutable after creation.
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `grove.io/v1alpha1` | | |
+| `kind` _string_ | `ClusterTopology` | | |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[ClusterTopologySpec](#clustertopologyspec)_ | Spec defines the topology hierarchy specification. |  |  |
+
+#### ClusterTopologySpec
+
+ClusterTopologySpec defines the topology hierarchy specification.
+
+_Appears in:_
+
+- [ClusterTopology](#clustertopology)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MaxItems: 7 <br />MinItems: 1 <br /> |
 
 #### ErrorCode
 
@@ -564,69 +588,16 @@ _Appears in:_
 - [PodCliqueSetTemplateSpec](#podcliquesettemplatespec)
 - [PodCliqueTemplateSpec](#podcliquetemplatespec)
 
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `packLevel` _[TopologyLevelName](#topologylevelname)_ | PackLevel specifies the topology level name for grouping replicas.<br />Controls placement constraint for EACH individual replica instance.<br />Must be one of: region, zone, datacenter, block, rack, host, numa<br />Example: "rack" means each replica independently placed within one rack.<br />Note: Does NOT constrain all replicas to the same rack together.<br />Different replicas can be in different topology domains. |  | Enum: [region zone datacenter block rack host numa] <br /> |
+| Field                                            | Description                                                                                                                                                                                                                                                                                                                                                                                                                       | Default | Validation                                                 |
+|--------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|------------------------------------------------------------|
+| `packDomain` _[TopologyDomain](#topologydomain)_ | PackDomain specifies the topology domain for grouping replicas.<br />Controls placement constraint for EACH individual replica instance.<br />Must be one of: region, zone, datacenter, block, rack, host, numa<br />Example: "rack" means each replica independently placed within one rack.<br />Note: Does NOT constrain all replicas to the same rack together.<br />Different replicas can be in different topology domains. |         | Enum: [region zone datacenter block rack host numa] <br /> |
 
 
 #### TopologyDomain
 
-
-
-TopologyDomain defines the topology hierarchy for the cluster.
-This resource is immutable after creation.
-Only one TopologyDomain can exist cluster-wide (enforced by webhook).
-
-
-
-
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `apiVersion` _string_ | `grove.io/v1alpha1` | | |
-| `kind` _string_ | `TopologyDomain` | | |
-| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
-| `spec` _[TopologyDomainSpec](#topologydomainspec)_ | Spec defines the topology hierarchy specification. |  |  |
-
-
-#### TopologyDomainSpec
-
-
-
-TopologyDomainSpec defines the topology hierarchy specification.
-
-
-
-_Appears in:_
-- [TopologyDomain](#topologydomain)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MaxItems: 7 <br />MinItems: 1 <br /> |
-
-
-#### TopologyLevel
-
-
-
-TopologyLevel defines a single level in the topology hierarchy.
-
-
-
-_Appears in:_
-- [TopologyDomainSpec](#topologydomainspec)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `name` _[TopologyLevelName](#topologylevelname)_ | Name is the predefined level identifier used in TopologyConstraint references.<br />Must be one of: region, zone, datacenter, block, rack, host, numa |  | Enum: [region zone datacenter block rack host numa] <br />Required: \{\} <br /> |
-| `topologyKey` _string_ | TopologyKey is the node label key that identifies this topology domain.<br />Must be a valid Kubernetes label key (qualified name).<br />Examples: "topology.kubernetes.io/zone", "kubernetes.io/hostname" |  | MaxLength: 316 <br />MinLength: 1 <br />Pattern: `^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$` <br />Required: \{\} <br /> |
-
-
-#### TopologyLevelName
-
 _Underlying type:_ _string_
 
-TopologyLevelName represents a predefined topology level in the hierarchy.
+TopologyDomain represents a predefined topology level in the hierarchy.
 Topology ordering (broadest to narrowest):
 Region > Zone > DataCenter > Block > Rack > Host > Numa
 
@@ -636,15 +607,28 @@ _Appears in:_
 - [TopologyConstraint](#topologyconstraint)
 - [TopologyLevel](#topologylevel)
 
-| Field | Description |
-| --- | --- |
-| `region` | TopologyLevelRegion represents the region level in the topology hierarchy.<br /> |
-| `zone` | TopologyLevelZone represents the zone level in the topology hierarchy.<br /> |
-| `datacenter` | TopologyLevelDataCenter represents the datacenter level in the topology hierarchy.<br /> |
-| `block` | TopologyLevelBlock represents the block level in the topology hierarchy.<br /> |
-| `rack` | TopologyLevelRack represents the rack level in the topology hierarchy.<br /> |
-| `host` | TopologyLevelHost represents the host level in the topology hierarchy.<br /> |
-| `numa` | TopologyLevelNuma represents the numa level in the topology hierarchy.<br /> |
+| Field        | Description                                                                               |
+|--------------|-------------------------------------------------------------------------------------------|
+| `region`     | TopologyDomainRegion represents the region level in the topology hierarchy.<br />         |
+| `zone`       | TopologyDomainZone represents the zone level in the topology hierarchy.<br />             |
+| `datacenter` | TopologyDomainDataCenter represents the datacenter level in the topology hierarchy.<br /> |
+| `block`      | TopologyDomainBlock represents the block level in the topology hierarchy.<br />           |
+| `rack`       | TopologyDomainRack represents the rack level in the topology hierarchy.<br />             |
+| `host`       | TopologyDomainHost represents the host level in the topology hierarchy.<br />             |
+| `numa`       | TopologyDomainNuma represents the numa level in the topology hierarchy.<br />             |
+
+#### TopologyLevel
+
+TopologyLevel defines a single level in the topology hierarchy.
+
+_Appears in:_
+
+- [ClusterTopologySpec](#clustertopologyspec)
+
+| Field                                        | Description                                                                                                                                                                                        | Default | Validation                                                                      |
+|----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|---------------------------------------------------------------------------------|
+| `domain` _[TopologyDomain](#topologydomain)_ | Domain is the predefined level identifier used in TopologyConstraint references.<br />Must be one of: region, zone, datacenter, block, rack, host, numa                                            |         | Enum: [region zone datacenter block rack host numa] <br />Required: \{\} <br /> |
+| `key` _string_                               | Key is the node label key that identifies this topology domain.<br />Must be a valid Kubernetes label key (qualified name).<br />Examples: "topology.kubernetes.io/zone", "kubernetes.io/hostname" |         | MaxLength: 63 <br />MinLength: 1 <br />Required: \{\} <br />                    |
 
 
 
@@ -877,10 +861,10 @@ TopologyConfiguration defines the configuration for topology-aware scheduling.
 _Appears in:_
 - [OperatorConfiguration](#operatorconfiguration)
 
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `enabled` _boolean_ | Enabled indicates whether topology-aware scheduling is enabled. |  |  |
-| `topologyDomainName` _string_ | TopologyDomainName is the name of the TopologyDomain resource to use.<br />If not specified, defaults to "grove-topology". |  |  |
+| Field               | Description                                                                                                   | Default | Validation |
+|---------------------|---------------------------------------------------------------------------------------------------------------|---------|------------|
+| `enabled` _boolean_ | Enabled indicates whether topology-aware scheduling is enabled.                                               |         |            |
+| `name` _string_     | Name is the name of the ClusterTopology resource to use.<br />If not specified, defaults to "grove-topology". |         |            |
 
 
 #### WebhookServer
