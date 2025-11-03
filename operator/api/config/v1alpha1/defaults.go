@@ -27,6 +27,7 @@ const (
 	defaultLeaderElectionResourceLock    = "leases"
 	defaultLeaderElectionResourceName    = "grove-operator-leader-election"
 	defaultWebhookServerTLSServerCertDir = "/etc/grove-operator/webhook-certs"
+	defaultTopologyName                  = "grove-topology"
 )
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
@@ -112,5 +113,12 @@ func SetDefaults_PodCliqueControllerConfiguration(obj *PodCliqueControllerConfig
 func SetDefaults_PodCliqueScalingGroupControllerConfiguration(obj *PodCliqueScalingGroupControllerConfiguration) {
 	if obj.ConcurrentSyncs == nil {
 		obj.ConcurrentSyncs = ptr.To(1)
+	}
+}
+
+// SetDefaults_TopologyConfiguration sets defaults for the TopologyConfiguration.
+func SetDefaults_TopologyConfiguration(obj *TopologyConfiguration) {
+	if obj.Enabled && obj.Name == "" {
+		obj.Name = defaultTopologyName
 	}
 }
