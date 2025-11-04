@@ -60,6 +60,9 @@ config:
       concurrentSyncs: 3
   logLevel: info
   logFormat: json
+  topology:
+    enabled: false
+    name: ""
   authorizer:
     enabled: false
     exemptServiceAccountUserNames:

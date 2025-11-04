@@ -27,7 +27,6 @@ rules:
   - podcliques/status
   - podcliquescalinggroups
   - podcliquescalinggroups/status
-  - clustertopology
   verbs:
   - create
   - get
@@ -36,6 +35,16 @@ rules:
   - delete
   - deletecollection
   - patch
+  - update
+- apiGroups:
+  - grove.io
+  resources:
+  - clustertopologies
+  - clustertopologies/finalizers
+  verbs:
+  - get
+  - list
+  - watch
   - update
 - apiGroups:
   - ""

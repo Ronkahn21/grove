@@ -31,6 +31,13 @@ config.yaml: |
   {{- end }}
   logLevel: {{ .Values.config.logLevel | default "info" }}
   logFormat: {{ .Values.config.logFormat | default "json" }}
+  {{- if .Values.config.topology }}
+  topology:
+    enabled: {{ .Values.config.topology.enabled }}
+    {{- if .Values.config.topology.name }}
+    name: {{ .Values.config.topology.name }}
+    {{- end }}
+  {{- end }}
   {{- if .Values.config.authorizer.enabled }}
   authorizer:
     enabled: {{ .Values.config.authorizer.enabled }}
