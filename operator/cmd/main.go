@@ -69,7 +69,7 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	if err = validateTopology(ctx, mgr.GetAPIReader(), operatorCfg.Topology); err != nil {
-		logger.Error(err, "topology validation failed, operator cannot start")
+		logger.Error(err, "can validate cluster topology, operator cannot start")
 		os.Exit(1)
 	}
 
@@ -127,6 +127,6 @@ func validateTopology(ctx context.Context, reader client.Reader, topologyConfig 
 	if err := reader.Get(ctx, types.NamespacedName{Name: topologyConfig.Name}, &clusterTopology); err != nil {
 		return fmt.Errorf("failed to fetch ClusterTopology %s: %w", topologyConfig.Name, err)
 	}
-	logger.Info("topology configuration validated successfully", "topologyName", topologyConfig.Name)
+	logger.Info("topology validated successfully", "cluster topology", topologyConfig.Name)
 	return nil
 }

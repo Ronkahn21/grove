@@ -30,6 +30,18 @@ const (
 	defaultTopologyName                  = "grove-topology"
 )
 
+// SetDefaults sets defaults for the OperatorConfiguration.
+func SetDefaults(config *OperatorConfiguration) {
+	SetDefaults_OperatorConfiguration(config)
+	SetDefaults_ClientConnectionConfiguration(&config.ClientConnection)
+	SetDefaults_LeaderElectionConfiguration(&config.LeaderElection)
+	SetDefaults_ServerConfiguration(&config.Server)
+	SetDefaults_PodCliqueSetControllerConfiguration(&config.Controllers.PodCliqueSet)
+	SetDefaults_PodCliqueControllerConfiguration(&config.Controllers.PodClique)
+	SetDefaults_PodCliqueScalingGroupControllerConfiguration(&config.Controllers.PodCliqueScalingGroup)
+	SetDefaults_TopologyConfiguration(&config.Topology)
+}
+
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
 func SetDefaults_ClientConnectionConfiguration(clientConnConfig *ClientConnectionConfiguration) {
 	if clientConnConfig.QPS == 0.0 {

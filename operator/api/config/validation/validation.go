@@ -34,6 +34,7 @@ func ValidateOperatorConfiguration(config *configv1alpha1.OperatorConfiguration)
 	allErrs = append(allErrs, validateLeaderElectionConfiguration(config.LeaderElection, field.NewPath("leaderElection"))...)
 	allErrs = append(allErrs, validateClientConnectionConfiguration(config.ClientConnection, field.NewPath("clientConnection"))...)
 	allErrs = append(allErrs, validateControllerConfiguration(config.Controllers, field.NewPath("controllers"))...)
+	allErrs = append(allErrs, validateTopologyConfiguration(config.Topology, field.NewPath("topology"))...)
 	return allErrs
 }
 
@@ -108,6 +109,14 @@ func mustBeGreaterThanZeroDuration(duration metav1.Duration, fldPath *field.Path
 	allErrs := field.ErrorList{}
 	if duration.Duration <= 0 {
 		allErrs = append(allErrs, field.Invalid(fldPath, duration, "must be greater than 0"))
+	}
+	return allErrs
+}
+
+func validateTopologyConfiguration(topologyCfg configv1alpha1.TopologyConfiguration, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if topologyCfg.Enabled && len(strings.TrimSpace(topologyCfg.Name)) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "topology name is required"))
 	}
 	return allErrs
 }
