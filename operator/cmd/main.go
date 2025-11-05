@@ -69,7 +69,7 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	if err = validateTopology(ctx, mgr.GetAPIReader(), operatorCfg.Topology); err != nil {
-		logger.Error(err, "can validate cluster topology, operator cannot start")
+		logger.Error(err, "cannot validate cluster topology, operator cannot start")
 		os.Exit(1)
 	}
 

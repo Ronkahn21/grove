@@ -27,6 +27,10 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+const (
+	errTopologyNameRequired = "topology name is required"
+)
+
 // ValidateOperatorConfiguration validates the operator configuration.
 func ValidateOperatorConfiguration(config *configv1alpha1.OperatorConfiguration) field.ErrorList {
 	allErrs := field.ErrorList{}
@@ -116,7 +120,7 @@ func mustBeGreaterThanZeroDuration(duration metav1.Duration, fldPath *field.Path
 func validateTopologyConfiguration(topologyCfg configv1alpha1.TopologyConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if topologyCfg.Enabled && len(strings.TrimSpace(topologyCfg.Name)) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "topology name is required"))
+		allErrs = append(allErrs, field.Required(fldPath.Child("name"), errTopologyNameRequired))
 	}
 	return allErrs
 }

@@ -62,7 +62,7 @@ config:
   logFormat: json
   topology:
     enabled: false
-    name: ""
+    name: "grove-topology"
   authorizer:
     enabled: false
     exemptServiceAccountUserNames:
