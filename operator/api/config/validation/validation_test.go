@@ -17,6 +17,7 @@
 package validation
 
 import (
+	"strings"
 	"testing"
 
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
@@ -70,6 +71,51 @@ func TestValidateTopologyConfiguration(t *testing.T) {
 			config: configv1alpha1.TopologyConfiguration{
 				Enabled: true,
 				Name:    "   ",
+			},
+			expectError: true,
+			errorField:  "topology.name",
+		},
+		{
+			name: "invalid: enabled with special characters",
+			config: configv1alpha1.TopologyConfiguration{
+				Enabled: true,
+				Name:    "%$@#",
+			},
+			expectError: true,
+			errorField:  "topology.name",
+		},
+		{
+			name: "invalid: enabled with uppercase letters",
+			config: configv1alpha1.TopologyConfiguration{
+				Enabled: true,
+				Name:    "MyTopology",
+			},
+			expectError: true,
+			errorField:  "topology.name",
+		},
+		{
+			name: "invalid: enabled with name starting with hyphen",
+			config: configv1alpha1.TopologyConfiguration{
+				Enabled: true,
+				Name:    "-topology",
+			},
+			expectError: true,
+			errorField:  "topology.name",
+		},
+		{
+			name: "invalid: enabled with name ending with hyphen",
+			config: configv1alpha1.TopologyConfiguration{
+				Enabled: true,
+				Name:    "topology-",
+			},
+			expectError: true,
+			errorField:  "topology.name",
+		},
+		{
+			name: "invalid: enabled with name too long",
+			config: configv1alpha1.TopologyConfiguration{
+				Enabled: true,
+				Name:    "a" + strings.Repeat("b", 253),
 			},
 			expectError: true,
 			errorField:  "topology.name",
