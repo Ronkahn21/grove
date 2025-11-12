@@ -68,7 +68,7 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	if err = validateTopology(ctx, mgr.GetAPIReader(), operatorCfg.ClusterTopology); err != nil {
+	if err = validateClusterTopology(ctx, mgr.GetAPIReader(), operatorCfg.ClusterTopology); err != nil {
 		logger.Error(err, "cannot validate cluster topology, operator cannot start")
 		os.Exit(1)
 	}
@@ -119,7 +119,7 @@ func printFlags() {
 	logger.Info("Running with flags", flagKVs...)
 }
 
-func validateTopology(ctx context.Context, reader client.Reader, clusterTopologyConfig configv1alpha1.ClusterTopologyConfiguration) error {
+func validateClusterTopology(ctx context.Context, reader client.Reader, clusterTopologyConfig configv1alpha1.ClusterTopologyConfiguration) error {
 	if !clusterTopologyConfig.Enabled {
 		return nil
 	}
