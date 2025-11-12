@@ -23,13 +23,8 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
-)
-
-const (
-	errTopologyNameRequired = "topology name is required"
 )
 
 // ValidateOperatorConfiguration validates the operator configuration.
@@ -39,7 +34,7 @@ func ValidateOperatorConfiguration(config *configv1alpha1.OperatorConfiguration)
 	allErrs = append(allErrs, validateLeaderElectionConfiguration(config.LeaderElection, field.NewPath("leaderElection"))...)
 	allErrs = append(allErrs, validateClientConnectionConfiguration(config.ClientConnection, field.NewPath("clientConnection"))...)
 	allErrs = append(allErrs, validateControllerConfiguration(config.Controllers, field.NewPath("controllers"))...)
-	allErrs = append(allErrs, validateTopologyConfiguration(config.Topology, field.NewPath("topology"))...)
+	allErrs = append(allErrs, validateClusterTopologyConfiguration(config.ClusterTopology, field.NewPath("clusterTopology"))...)
 	return allErrs
 }
 
@@ -118,20 +113,12 @@ func mustBeGreaterThanZeroDuration(duration metav1.Duration, fldPath *field.Path
 	return allErrs
 }
 
-// validateTopologyConfiguration validates the topology configuration.
-// When topology is enabled, it ensures the topology name is provided and is a valid DNS subdomain name
-// that can be used as a Kubernetes resource name.
-func validateTopologyConfiguration(topologyCfg configv1alpha1.TopologyConfiguration, fldPath *field.Path) field.ErrorList {
+// validateClusterTopologyConfiguration validates the cluster topology configuration.
+// When cluster topology is enabled, it ensures the topology name is provided.
+func validateClusterTopologyConfiguration(clusterTopologyCfg configv1alpha1.ClusterTopologyConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if topologyCfg.Enabled && len(strings.TrimSpace(topologyCfg.Name)) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("name"), errTopologyNameRequired))
-		return allErrs
-	}
-
-	if topologyCfg.Enabled {
-		if errs := validation.IsDNS1123Subdomain(topologyCfg.Name); len(errs) > 0 {
-			allErrs = append(allErrs, field.Invalid(fldPath.Child("name"), topologyCfg.Name, strings.Join(errs, ", ")))
-		}
+	if clusterTopologyCfg.Enabled && len(strings.TrimSpace(clusterTopologyCfg.Name)) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "clusterTopology name is required"))
 	}
 	return allErrs
 }

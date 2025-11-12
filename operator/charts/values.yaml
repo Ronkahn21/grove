@@ -60,7 +60,7 @@ config:
       concurrentSyncs: 3
   logLevel: info
   logFormat: json
-  topology:
+  clusterTopology:
     enabled: false
     name: "grove-topology"
   authorizer:

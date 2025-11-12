@@ -23,52 +23,52 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSetDefaults_TopologyConfiguration(t *testing.T) {
+func TestSetDefaults_ClusterTopologyConfiguration(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    TopologyConfiguration
-		expected TopologyConfiguration
+		input    ClusterTopologyConfiguration
+		expected ClusterTopologyConfiguration
 	}{
 		{
 			name: "enabled with no name defaults to grove-topology",
-			input: TopologyConfiguration{
+			input: ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "",
 			},
-			expected: TopologyConfiguration{
+			expected: ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "grove-topology",
 			},
 		},
 		{
 			name: "enabled with custom name preserves name",
-			input: TopologyConfiguration{
+			input: ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "custom-topology",
 			},
-			expected: TopologyConfiguration{
+			expected: ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "custom-topology",
 			},
 		},
 		{
 			name: "disabled with no name remains empty",
-			input: TopologyConfiguration{
+			input: ClusterTopologyConfiguration{
 				Enabled: false,
 				Name:    "",
 			},
-			expected: TopologyConfiguration{
+			expected: ClusterTopologyConfiguration{
 				Enabled: false,
 				Name:    "",
 			},
 		},
 		{
 			name: "disabled with name preserves name",
-			input: TopologyConfiguration{
+			input: ClusterTopologyConfiguration{
 				Enabled: false,
 				Name:    "some-topology",
 			},
-			expected: TopologyConfiguration{
+			expected: ClusterTopologyConfiguration{
 				Enabled: false,
 				Name:    "some-topology",
 			},
@@ -78,7 +78,7 @@ func TestSetDefaults_TopologyConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := tt.input
-			SetDefaults_TopologyConfiguration(&cfg)
+			SetDefaults_ClusterTopologyConfiguration(&cfg)
 			assert.Equal(t, tt.expected, cfg)
 		})
 	}

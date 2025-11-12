@@ -39,7 +39,7 @@ func SetDefaults(config *OperatorConfiguration) {
 	SetDefaults_PodCliqueSetControllerConfiguration(&config.Controllers.PodCliqueSet)
 	SetDefaults_PodCliqueControllerConfiguration(&config.Controllers.PodClique)
 	SetDefaults_PodCliqueScalingGroupControllerConfiguration(&config.Controllers.PodCliqueScalingGroup)
-	SetDefaults_TopologyConfiguration(&config.Topology)
+	SetDefaults_ClusterTopologyConfiguration(&config.ClusterTopology)
 }
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
@@ -128,8 +128,8 @@ func SetDefaults_PodCliqueScalingGroupControllerConfiguration(obj *PodCliqueScal
 	}
 }
 
-// SetDefaults_TopologyConfiguration sets defaults for the TopologyConfiguration.
-func SetDefaults_TopologyConfiguration(obj *TopologyConfiguration) {
+// SetDefaults_ClusterTopologyConfiguration sets defaults for the ClusterTopologyConfiguration.
+func SetDefaults_ClusterTopologyConfiguration(obj *ClusterTopologyConfiguration) {
 	if obj.Enabled && obj.Name == "" {
 		obj.Name = defaultTopologyName
 	}

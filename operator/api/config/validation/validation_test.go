@@ -17,7 +17,6 @@
 package validation
 
 import (
-	"strings"
 	"testing"
 
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
@@ -26,16 +25,16 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
-func TestValidateTopologyConfiguration(t *testing.T) {
+func TestValidateClusterTopologyConfiguration(t *testing.T) {
 	tests := []struct {
 		name        string
-		config      configv1alpha1.TopologyConfiguration
+		config      configv1alpha1.ClusterTopologyConfiguration
 		expectError bool
 		errorField  string
 	}{
 		{
 			name: "valid: enabled with name",
-			config: configv1alpha1.TopologyConfiguration{
+			config: configv1alpha1.ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "my-topology",
 			},
@@ -43,7 +42,7 @@ func TestValidateTopologyConfiguration(t *testing.T) {
 		},
 		{
 			name: "valid: disabled with no name",
-			config: configv1alpha1.TopologyConfiguration{
+			config: configv1alpha1.ClusterTopologyConfiguration{
 				Enabled: false,
 				Name:    "",
 			},
@@ -51,7 +50,7 @@ func TestValidateTopologyConfiguration(t *testing.T) {
 		},
 		{
 			name: "valid: disabled with name",
-			config: configv1alpha1.TopologyConfiguration{
+			config: configv1alpha1.ClusterTopologyConfiguration{
 				Enabled: false,
 				Name:    "my-topology",
 			},
@@ -59,72 +58,27 @@ func TestValidateTopologyConfiguration(t *testing.T) {
 		},
 		{
 			name: "invalid: enabled with empty name",
-			config: configv1alpha1.TopologyConfiguration{
+			config: configv1alpha1.ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "",
 			},
 			expectError: true,
-			errorField:  "topology.name",
+			errorField:  "clusterTopology.name",
 		},
 		{
 			name: "invalid: enabled with whitespace-only name",
-			config: configv1alpha1.TopologyConfiguration{
+			config: configv1alpha1.ClusterTopologyConfiguration{
 				Enabled: true,
 				Name:    "   ",
 			},
 			expectError: true,
-			errorField:  "topology.name",
-		},
-		{
-			name: "invalid: enabled with special characters",
-			config: configv1alpha1.TopologyConfiguration{
-				Enabled: true,
-				Name:    "%$@#",
-			},
-			expectError: true,
-			errorField:  "topology.name",
-		},
-		{
-			name: "invalid: enabled with uppercase letters",
-			config: configv1alpha1.TopologyConfiguration{
-				Enabled: true,
-				Name:    "MyTopology",
-			},
-			expectError: true,
-			errorField:  "topology.name",
-		},
-		{
-			name: "invalid: enabled with name starting with hyphen",
-			config: configv1alpha1.TopologyConfiguration{
-				Enabled: true,
-				Name:    "-topology",
-			},
-			expectError: true,
-			errorField:  "topology.name",
-		},
-		{
-			name: "invalid: enabled with name ending with hyphen",
-			config: configv1alpha1.TopologyConfiguration{
-				Enabled: true,
-				Name:    "topology-",
-			},
-			expectError: true,
-			errorField:  "topology.name",
-		},
-		{
-			name: "invalid: enabled with name too long",
-			config: configv1alpha1.TopologyConfiguration{
-				Enabled: true,
-				Name:    "a" + strings.Repeat("b", 253),
-			},
-			expectError: true,
-			errorField:  "topology.name",
+			errorField:  "clusterTopology.name",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := validateTopologyConfiguration(tt.config, field.NewPath("topology"))
+			errs := validateClusterTopologyConfiguration(tt.config, field.NewPath("clusterTopology"))
 
 			if tt.expectError {
 				assert.NotEmpty(t, errs, "expected validation errors but got none")

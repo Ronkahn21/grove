@@ -68,7 +68,7 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	if err = validateTopology(ctx, mgr.GetAPIReader(), operatorCfg.Topology); err != nil {
+	if err = validateTopology(ctx, mgr.GetAPIReader(), operatorCfg.ClusterTopology); err != nil {
 		logger.Error(err, "cannot validate cluster topology, operator cannot start")
 		os.Exit(1)
 	}
@@ -119,14 +119,14 @@ func printFlags() {
 	logger.Info("Running with flags", flagKVs...)
 }
 
-func validateTopology(ctx context.Context, reader client.Reader, topologyConfig configv1alpha1.TopologyConfiguration) error {
-	if !topologyConfig.Enabled {
+func validateTopology(ctx context.Context, reader client.Reader, clusterTopologyConfig configv1alpha1.ClusterTopologyConfiguration) error {
+	if !clusterTopologyConfig.Enabled {
 		return nil
 	}
 	var clusterTopology grovecorev1alpha1.ClusterTopology
-	if err := reader.Get(ctx, types.NamespacedName{Name: topologyConfig.Name}, &clusterTopology); err != nil {
-		return fmt.Errorf("failed to fetch ClusterTopology %s: %w", topologyConfig.Name, err)
+	if err := reader.Get(ctx, types.NamespacedName{Name: clusterTopologyConfig.Name}, &clusterTopology); err != nil {
+		return fmt.Errorf("failed to fetch ClusterTopology %s: %w", clusterTopologyConfig.Name, err)
 	}
-	logger.Info("topology validated successfully", "cluster topology", topologyConfig.Name)
+	logger.Info("topology validated successfully", "cluster topology", clusterTopologyConfig.Name)
 	return nil
 }

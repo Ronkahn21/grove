@@ -61,8 +61,8 @@ type OperatorConfiguration struct {
 	Controllers      ControllerConfiguration `json:"controllers"`
 	LogLevel         LogLevel                `json:"logLevel"`
 	LogFormat        LogFormat               `json:"logFormat"`
-	Authorizer       AuthorizerConfig        `json:"authorizer"`
-	Topology         TopologyConfiguration   `json:"topology"`
+	Authorizer       AuthorizerConfig               `json:"authorizer"`
+	ClusterTopology  ClusterTopologyConfiguration   `json:"clusterTopology"`
 }
 
 // LeaderElectionConfiguration defines the configuration for the leader election.
@@ -189,8 +189,8 @@ type AuthorizerConfig struct {
 	ExemptServiceAccountUserNames []string `json:"exemptServiceAccountUserNames,omitempty"`
 }
 
-// TopologyConfiguration defines the configuration for topology-aware scheduling.
-type TopologyConfiguration struct {
+// ClusterTopologyConfiguration defines the configuration for topology-aware scheduling.
+type ClusterTopologyConfiguration struct {
 	// Enabled indicates whether topology-aware scheduling is enabled.
 	Enabled bool `json:"enabled"`
 	// Name is the ClusterTopology resource name to use.

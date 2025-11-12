@@ -31,11 +31,11 @@ config.yaml: |
   {{- end }}
   logLevel: {{ .Values.config.logLevel | default "info" }}
   logFormat: {{ .Values.config.logFormat | default "json" }}
-  {{- if .Values.config.topology }}
-  topology:
-    enabled: {{ .Values.config.topology.enabled }}
-    {{- if .Values.config.topology.name }}
-    name: {{ .Values.config.topology.name }}
+  {{- if .Values.config.clusterTopology }}
+  clusterTopology:
+    enabled: {{ .Values.config.clusterTopology.enabled }}
+    {{- if .Values.config.clusterTopology.name }}
+    name: {{ .Values.config.clusterTopology.name }}
     {{- end }}
   {{- end }}
   {{- if .Values.config.authorizer.enabled }}
