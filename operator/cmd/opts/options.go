@@ -64,8 +64,6 @@ func (o *CLIOptions) Complete() error {
 	if err = runtime.DecodeInto(configDecoder, data, o.Config); err != nil {
 		return fmt.Errorf("error decoding config: %w", err)
 	}
-	// set defaults
-	configv1alpha1.SetDefaults(o.Config)
 	return nil
 }
 
