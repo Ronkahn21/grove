@@ -56,13 +56,13 @@ type OperatorConfiguration struct {
 	metav1.TypeMeta  `json:",inline"`
 	ClientConnection ClientConnectionConfiguration `json:"runtimeClientConnection"`
 	LeaderElection   LeaderElectionConfiguration
-	Server           ServerConfiguration     `json:"server"`
-	Debugging        *DebuggingConfiguration `json:"debugging,omitempty"`
-	Controllers      ControllerConfiguration `json:"controllers"`
-	LogLevel         LogLevel                `json:"logLevel"`
-	LogFormat        LogFormat               `json:"logFormat"`
-	Authorizer       AuthorizerConfig               `json:"authorizer"`
-	ClusterTopology  ClusterTopologyConfiguration   `json:"clusterTopology"`
+	Server           ServerConfiguration          `json:"server"`
+	Debugging        *DebuggingConfiguration      `json:"debugging,omitempty"`
+	Controllers      ControllerConfiguration      `json:"controllers"`
+	LogLevel         LogLevel                     `json:"logLevel"`
+	LogFormat        LogFormat                    `json:"logFormat"`
+	Authorizer       AuthorizerConfig             `json:"authorizer"`
+	ClusterTopology  ClusterTopologyConfiguration `json:"clusterTopology"`
 }
 
 // LeaderElectionConfiguration defines the configuration for the leader election.
