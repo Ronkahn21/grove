@@ -15,25 +15,28 @@ applications require:
 
 ## Goals
 
-- Provide flexible, cluster-agnostic topology hierarchy definition via ClusterTopology CRD
-- Enable packing constraints for network locality across all Grove scalable resources
-- Mutable topology configuration allowing runtime updates
-- Flexible topology level ordering without enforced hierarchy
+- Define standard topology model uniform across cloud and on-prem clusters
+- Enable cluster-specific topology mapping through admin configuration
+- Enable packing constraints at PodCliqueSet, PodCliqueScalingGroup, and PodClique levels
+- Translate user-defined topology constraints to scheduler-specific API
+- Generate downstream scheduler topology CRs (initial implementation: KAI Topology)
 
 ## Non-Goals
 
-- Spread constraints across topology domains (ReplicaSpreadDomain)
-- Root domain constraints for entire resource (RootDomain)
-- Ratio-based affinity groups between scaling groups (AffinityGroups with PackRatio)
-- Dynamic topology reconfiguration after creation
-- Automatic suggest topology according to workload characteristics
+- Spread constraints across topology domains (anti-packing)
+- Root domain constraints for entire workloads
+- Ratio-based affinity between scaling groups
+- Multi-cluster topology support
+- Automatic topology suggestion based on workload characteristics
 
 ## Proposal
 
-Grove implements topology-aware scheduling through a ClusterTopology CRD,
-operator configuration to enable/disable features, and user-specified topology constraints in workloads.
-The operator automatically generates preferred constraints (lower bound) for optimization
-while allowing users to specify required constraints for strict placement (upper bound).
+Grove implements topology-aware scheduling by allowing admins to define cluster topology levels
+in OperatorConfiguration. Users can then reference these topology levels when specifying packing
+constraints in their workloads. The operator translates admin topology definitions into
+ClusterTopology CR and downstream scheduler topology CRs (KAI Topology), and translates user
+packing constraints into scheduler-specific API, automatically generating preferred constraints
+for optimization while allowing users to specify required constraints for strict placement.
 
 ## Design Details
 
@@ -62,7 +65,7 @@ while allowing users to specify required constraints for strict placement (upper
 │  │ (operator-managed)   │  Manage  │ (operator-managed)   │             │
 │  └──────────┬───────────┘          └────────────┬─────────┘             │
 │             │                                   │                       │
-│             │ (validates against)               │ (used by)             │
+│             │ (validates against)               │ (used by KAI Scheduler) │
 ├─────────────┼───────────────────────────────────┼───────────────────────┤
 │             │                                   │                       │
 │  User Layer:                                    │                       │
@@ -195,7 +198,7 @@ const (
 - **Condition Type**: `Ready`
 - **Status Values**:
   - `True` = ClusterTopology is ready and KAI Topology CR successfully created
-  - `False` = ClusterTopology has errors or KAI Topology creation failed
+  - `False` = Downstream topology creation or update failed (currently KAI Topology)
   - `Unknown` = Status cannot be determined or reconciliation in progress
 - **Reasons**:
   - `TopologyReady` - ClusterTopology configured and KAI Topology created successfully
@@ -246,7 +249,8 @@ The Manged ClusterTopology CR is generated and managed sole by the Grove operato
 3. Restart the Grove operator
 4. Operator creates ClusterTopology CR named "grove-topology"
 5. Operator creates and continuously reconciles KAI Topology CR
-6. If configuration is invalid or CR creation fails → operator exits with error
+6. If configuration is invalid or ClusterTopology CR creation fails → operator exits with error
+7. If downstream topology CR creation fails (KAI Topology) → reflected in ClusterTopology Ready condition (operator continues)
 
 
 **A. Webhook Validation**
@@ -339,7 +343,7 @@ type TopologyConfiguration struct {
   - If ClusterTopology CR creation fails → operator exits with error
   - Operator generates KAI Topology CR
   - If KAI Topology creation fails → reflected in ClusterTopology Ready condition and LastErrors (not operator failure)
-- If `clusterTopology.enabled: false`: topology features disabled
+- If `clusterTopology.enabled: false`: topology features disabled, ClusterTopology CR remains (operator does not modify or delete it)
 
 **Configuration Validation:**
 
@@ -364,7 +368,7 @@ At operator startup, Grove validates topology configuration in OperatorConfigura
 **Enabling Topology (clusterTopology.enabled: false → true):**
 
 ***For existing workloads:***
-* operator validates constraints, removes invalid ones, updates status
+* operator validates constraints, removes constraints referencing non-existent topology levels from PodGang, updates PodCliqueSet status to indicate constraints are ignored
 
 ***For new workloads:***
 * validation webhook validates constraints
@@ -399,7 +403,7 @@ For New Workloads:
 Preferred Constraint Updates:
 - When strictest (narrowest) topology level changes (e.g., host → numa)
 - Operator updates preferred constraint to new strictest level
-- Applies to all three levels (PodGang, TopologyConstraintGroup, PodGroup)
+- Applies to all three levels in scheduler API: PodGang (from PodCliqueSet), TopologyConstraintGroup (from PodCliqueScalingGroup), and PodGroup (from PodClique)
 
 ### 2. Operator API Changes (Grove CRDs)
 
@@ -621,9 +625,10 @@ The operator translates Grove operator API to Grove Scheduler API with three-lev
 **Scheduler Topology Discovery:**
 
 - KAI will use topology annotation on the podGroup to allow KAI discover which KAI topology is used.
-- The annotation key will be `grove.io/topology-name` and the value will be the name of the ClusterTopology resource created by Grove operator, which is `grove-topology`.
+- The annotation key will be `grove.io/topology-name` and the value will be the name of the KAI Topology CR created by Grove operator, which is `grove-topology`.
+- This annotation decouples KAI scheduler from Grove - KAI doesn't need to know which topology Grove created, it discovers it dynamically via the annotation.
 
-*Note: This allows KAI to discover the topology configuration defined by Grove operator without hardcoding topology names in KAI Scheduler.
+*Note: This allows KAI to discover the topology configuration defined by Grove operator without hardcoding topology names in KAI Scheduler,
 allowing changing the name from our side*
 
 **Constraint Translation (Required and Preferred):**
