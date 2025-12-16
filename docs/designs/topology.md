@@ -260,7 +260,7 @@ The validation webhook enforces business logic constraints:
 - **On CREATE**: Validates domain uniqueness, key uniqueness, and key format
 - **On UPDATE**: Runs same CREATE validations (uniqueness, format)
 - **Authorization**: Only operator service account can CREATE/UPDATE/DELETE the Manged ClusterTopology
-- **Important**: No hierarchical order enforcement - levels can be specified in any order
+- **Important**: No hierarchical order enforcement - levels can be specified in any order. The order is already defined (Region, Zone, DataCenter, Block, Rack, Host, Numa)
 - **Important**: Resource is fully mutable - all fields can be updated after creation
 
 
