@@ -25,6 +25,9 @@ applications require:
 
 - Spread constraints across topology domains (anti-packing)
 - Root domain constraints for entire workloads
+ (constraining all replicas to the same single domain instance - e.g., all 3 replicas must be in rack-1. PackDomain 
+ allows each replica to be in different instances of the same domain level - e.g.,
+ replica-1 in rack-1, replica-2 in rack-2, replica-3 in rack-3)
 - Ratio-based affinity between scaling groups
 - Multi-cluster topology support
 - Automatic topology suggestion based on workload characteristics
@@ -94,19 +97,6 @@ for optimization while allowing users to specify required constraints for strict
 ClusterTopology is a cluster-scoped CR that defines consistent naming for cluster topology hierarchy to be used by
 workload designers. It maps topology level domains to Kubernetes node labels.
 
-**Characteristics:**
-
-- **Cluster-scoped resource**: Only one ClusterTopology resource managed by operator: "grove-topology"
-- **Operator-managed resource**: Created and managed by Grove operator based on OperatorConfiguration
-- **User-created CRs allowed**: Users can create additional ClusterTopology CRs but Grove does not use them
-- **Fixed name for managed CR**: Operator-managed CR always named "grove-topology"
-- **Mutability**:
-  - **Operator-managed CR** ("grove-topology"): Only modified by operator at startup (not runtime)
-  - **User-created CRs**: Fully mutable - can be modified anytime
-- **Flexible ordering**: Levels can be specified in any order - no hierarchical ordering enforced in OperatorConfiguration
-- **Supported topology levels**: Region, Zone, DataCenter, Block, Rack, Host, Numa
-- **Webhook-validated**: Webhook validates domain/key uniqueness, key format, and authorization (only operator can modify "grove-topology")
-
 **TopologyDomain Definitions:**
 
 - **Region**: Network local to a CSP region
@@ -116,6 +106,19 @@ workload designers. It maps topology level domains to Kubernetes node labels.
 - **Rack**: First-level network grouping of compute hosts (includes NVLink domains as logical racks)
 - **Host**: Individual compute host
 - **Numa**: NUMA node (processor and memory locality domain) within a compute host
+
+**Characteristics:**
+
+- **Cluster-scoped resource**: Only one ClusterTopology resource managed by operator: "grove-topology"
+- **Operator-managed resource**: Created and managed by Grove operator based on OperatorConfiguration
+- **User-created CRs allowed**: Users can create additional ClusterTopology CRs but Grove does not use them
+- **Fixed name for managed CR**: Operator-managed CR always named "grove-topology"
+- **Mutability**:
+  - **Operator-managed CR** ("grove-topology"): Only modified by operator at startup (not runtime)
+  - **User-created CRs**: Fully mutable - can be modified anytime
+- **Order-Independent Configuration**: The mapping of topology domains to kubernetes labels, in order to define levels, can be specified in any order - no hierarchical ordering enforced in OperatorConfiguration
+- **Supported topology levels**: Region, Zone, DataCenter, Block, Rack, Host, Numa
+- **Webhook-validated**: Webhook validates domain/key uniqueness, key format, and authorization (only operator can modify "grove-topology")
 
 **API Structure:**
 
@@ -207,9 +210,9 @@ const (
 
 **Status Condition States:**
 
-| Status | Reason                            | Scenario                            | LastErrors                |
-|--------|-----------------------------------|-------------------------------------|---------------------------|
-| True   | TopologyReady                     | KAI Topology created successfully   | None                      |
+| Status | Reason                         | Scenario                            | LastErrors                |
+|--------|--------------------------------|-------------------------------------|---------------------------|
+| True   | TopologyReady                  | KAI Topology created successfully   | None                      |
 | False  | TopologyCreationOrUpdateFailed | KAI Topology creation/update failed | KAI_TOPOLOGY_CREATE_ERROR |
 
 
@@ -259,9 +262,8 @@ The validation webhook enforces business logic constraints:
 
 - **On CREATE**: Validates domain uniqueness, key uniqueness, and key format
 - **On UPDATE**: Runs same CREATE validations (uniqueness, format)
-- **Authorization**: Only operator service account can CREATE/UPDATE/DELETE the Manged ClusterTopology
+- **Authorization**: Only operator service account can CREATE/UPDATE/DELETE the Managed ClusterTopology with the resource Name grove-topology
 - **Important**: No hierarchical order enforcement - levels can be specified in any order. The order is already defined (Region, Zone, DataCenter, Block, Rack, Host, Numa)
-- **Important**: Resource is fully mutable - all fields can be updated after creation
 
 
 **Authorization Validation**
@@ -343,7 +345,7 @@ type ClusterTopologyConfiguration struct {
   - If ClusterTopology CR creation fails → operator exits with error
   - Operator generates KAI Topology CR
   - If KAI Topology creation fails → reflected in ClusterTopology Ready condition and LastErrors (not operator failure)
-- If `clusterTopology.enabled: false`: topology features disabled, ClusterTopology CR remains (operator does not modify or delete it)
+- If `clusterTopology.enabled: false`: topology features disabled, operator attempts to delete ClusterTopology CR at startup (non-fatal - logs error and continues if deletion fails). KAI Topology cascade-deleted via owner reference.
 
 **Configuration Validation:**
 
@@ -374,6 +376,11 @@ At operator startup, Grove validates topology configuration in OperatorConfigura
 * validation webhook validates constraints
 
 **Disabling Topology (clusterTopology.enabled: true → false):**
+
+Operator behavior at startup:
+- Operator deletes ClusterTopology CR
+- KAI Topology CR is cascade-deleted via owner reference
+- If deletion fails: non-fatal error, operator logs and continues
 
 For existing workloads:
    - remove all topology constraints (required/preferrd) in PodGang
