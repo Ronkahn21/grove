@@ -394,7 +394,7 @@ For new workloads:
 
 For Existing Workloads:
 - If constraint references non-existent level:
-  - Remove required constraint for invalid level
+  - Remove required constraint for invalid level from PodGang
   - Update preferred constraint to new strictest level in updated ClusterTopology
   - Update PodCliqueSet status with constraint removal reason
 - If constraint still valid:
@@ -651,7 +651,7 @@ The operator translates user's level names to keys and builds required/preferred
 **Preferred Constraints (Auto-Generated):**
 
 - Operator ALWAYS generates preferred constraint at all three levels
-- Uses key of strictest (narrowest) level configured in ClusterTopology
+- Uses key of strictest (narrowest) level configured in ClusterTopology (for example if the ClusterTopology is host, rack, zone use "host" level, `"kubernetes.io/hostname"`)
 - Example: If levels include "host", preferred = `"kubernetes.io/hostname"`
 - Writes to PodGang: `TopologyConstraint.PackConstraint.Preferred = "kubernetes.io/hostname"`
 - Enables out-of-box optimization even without user configuration
