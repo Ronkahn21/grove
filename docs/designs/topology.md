@@ -514,8 +514,7 @@ status:
     observedGeneration: 5
     lastTransitionTime: "2025-12-08T10:10:00Z"
     reason: TopologyLevelNotFound
-    message: "Topology level 'block' not found in ClusterTopology 'grove-topology'. Remove packDomain or update ClusterTopology."
-```
+    message: "Topology level 'block' not found in ClusterTopology 'grove-topology'.  Topology constraint will be ignored. Please remove packDomain or update ClusterTopology."
 
 
 #### Validation Webhook
