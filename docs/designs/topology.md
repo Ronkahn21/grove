@@ -322,7 +322,7 @@ type OperatorConfiguration struct {
     ClusterTopology *TopologyConfiguration `json:"clusterTopology,omitempty"`
 }
 
-type TopologyConfiguration struct {
+type ClusterTopologyConfiguration struct {
     // Enabled indicates whether topology-aware scheduling is enabled
     Enabled bool `json:"enabled"`
 
