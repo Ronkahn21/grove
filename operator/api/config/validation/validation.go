@@ -114,11 +114,45 @@ func mustBeGreaterThanZeroDuration(duration metav1.Duration, fldPath *field.Path
 }
 
 // validateClusterTopologyConfiguration validates the cluster topology configuration.
-// When cluster topology is enabled, it ensures the topology name is provided.
+// When cluster topology is enabled, it ensures the topology name and levels are provided,
+// and validates domain and key uniqueness.
 func validateClusterTopologyConfiguration(clusterTopologyCfg configv1alpha1.ClusterTopologyConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if clusterTopologyCfg.Enabled && len(strings.TrimSpace(clusterTopologyCfg.Name)) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "clusterTopology name is required"))
+
+	if !clusterTopologyCfg.Enabled {
+		return allErrs
 	}
+
+	if len(strings.TrimSpace(clusterTopologyCfg.Name)) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "name is required when topology is enabled"))
+	}
+
+	if len(clusterTopologyCfg.Levels) == 0 {
+		allErrs = append(allErrs, field.Required(fldPath.Child("levels"), "levels are required when topology is enabled"))
+	}
+
+	levelsPath := fldPath.Child("levels")
+	if len(clusterTopologyCfg.Levels) > 7 {
+		allErrs = append(allErrs, field.TooMany(levelsPath, len(clusterTopologyCfg.Levels), 7))
+	}
+
+	seenDomains := make(map[string]int)
+	for i, level := range clusterTopologyCfg.Levels {
+		if _, exists := seenDomains[string(level.Domain)]; exists {
+			allErrs = append(allErrs, field.Duplicate(levelsPath.Index(i).Child("domain"), level.Domain))
+		} else {
+			seenDomains[string(level.Domain)] = i
+		}
+	}
+
+	seenKeys := make(map[string]int)
+	for i, level := range clusterTopologyCfg.Levels {
+		if _, exists := seenKeys[level.Key]; exists {
+			allErrs = append(allErrs, field.Duplicate(levelsPath.Index(i).Child("key"), level.Key))
+		} else {
+			seenKeys[level.Key] = i
+		}
+	}
+
 	return allErrs
 }

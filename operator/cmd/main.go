@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -31,6 +32,8 @@ import (
 	groveversion "github.com/ai-dynamo/grove/operator/internal/version"
 
 	"github.com/spf13/pflag"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,8 +71,8 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	if err = validateClusterTopology(ctx, mgr.GetAPIReader(), operatorCfg.ClusterTopology); err != nil {
-		logger.Error(err, "cannot validate cluster topology, operator cannot start")
+	if err = ensureClusterTopology(ctx, mgr.GetClient(), operatorCfg.ClusterTopology); err != nil {
+		logger.Error(err, "cannot create/update cluster topology, operator cannot start")
 		os.Exit(1)
 	}
 
@@ -119,14 +122,56 @@ func printFlags() {
 	logger.Info("Running with flags", flagKVs...)
 }
 
-func validateClusterTopology(ctx context.Context, reader client.Reader, clusterTopologyConfig configv1alpha1.ClusterTopologyConfiguration) error {
-	if !clusterTopologyConfig.Enabled {
+func ensureClusterTopology(ctx context.Context, client client.Client, config configv1alpha1.ClusterTopologyConfiguration) error {
+	if !config.Enabled {
 		return nil
 	}
-	var clusterTopology grovecorev1alpha1.ClusterTopology
-	if err := reader.Get(ctx, types.NamespacedName{Name: clusterTopologyConfig.Name}, &clusterTopology); err != nil {
-		return fmt.Errorf("failed to fetch ClusterTopology %s: %w", clusterTopologyConfig.Name, err)
+
+	if config.Name == "" {
+		return errors.New("ClusterTopology name is required when enabled")
 	}
-	logger.Info("topology validated successfully", "cluster topology", clusterTopologyConfig.Name)
+
+	if len(config.Levels) == 0 {
+		return errors.New("ClusterTopology levels are required when enabled")
+	}
+
+	topology := &grovecorev1alpha1.ClusterTopology{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: config.Name,
+		},
+		Spec: grovecorev1alpha1.ClusterTopologySpec{
+			Levels: convertTopologyLevels(config.Levels),
+		},
+	}
+
+	err := client.Create(ctx, topology)
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			existing := &grovecorev1alpha1.ClusterTopology{}
+			if err := client.Get(ctx, types.NamespacedName{Name: config.Name}, existing); err != nil {
+				return fmt.Errorf("failed to get existing ClusterTopology: %w", err)
+			}
+			existing.Spec = topology.Spec
+			if err := client.Update(ctx, existing); err != nil {
+				return fmt.Errorf("failed to update ClusterTopology: %w", err)
+			}
+			logger.Info("cluster topology updated successfully", "name", config.Name)
+			return nil
+		}
+		return fmt.Errorf("failed to create ClusterTopology: %w", err)
+	}
+
+	logger.Info("cluster topology created successfully", "name", config.Name)
 	return nil
+}
+
+func convertTopologyLevels(levels []configv1alpha1.TopologyLevel) []grovecorev1alpha1.TopologyLevel {
+	result := make([]grovecorev1alpha1.TopologyLevel, len(levels))
+	for i, level := range levels {
+		result[i] = grovecorev1alpha1.TopologyLevel{
+			Domain: grovecorev1alpha1.TopologyDomain(level.Domain),
+			Key:    level.Key,
+		}
+	}
+	return result
 }

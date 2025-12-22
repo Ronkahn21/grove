@@ -52,6 +52,8 @@ type ClusterTopologySpec struct {
 	// This field is immutable after creation.
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=7
+	// +kubebuilder:validation:XValidation:rule="self.all(x, self.filter(y, y.domain == x.domain).size() == 1)",message="domain must be unique across all levels"
+	// +kubebuilder:validation:XValidation:rule="self.all(x, self.filter(y, y.key == x.key).size() == 1)",message="key must be unique across all levels"
 	Levels []TopologyLevel `json:"levels"`
 }
 
@@ -126,6 +128,7 @@ type TopologyLevel struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]/)?([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$`
 	Key string `json:"key"`
 }
 
