@@ -66,7 +66,7 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 	if operatorCfg.ClusterTopology.Enabled {
-		// create Kubernetes client for cluster topology
+		// create a Kubernetes client for cluster topology
 		// the default client manager is not running prior (mgr.Start())
 		topologyK8sClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
 		if err != nil {
