@@ -131,7 +131,7 @@ func validateClusterTopologyConfiguration(clusterTopologyCfg configv1alpha1.Clus
 func validateClusterTopologyLevels(levels []configv1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if len(levels) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("levels"), "levels are required when topology is enabled"))
+		allErrs = append(allErrs, field.Required(fldPath, "levels are required when topology is enabled"))
 	}
 
 	if len(levels) > configv1alpha1.MaxTopologyLevels {

@@ -27,7 +27,6 @@ const (
 	defaultLeaderElectionResourceLock    = "leases"
 	defaultLeaderElectionResourceName    = "grove-operator-leader-election"
 	defaultWebhookServerTLSServerCertDir = "/etc/grove-operator/webhook-certs"
-	defaultTopologyName                  = "grove-topology"
 )
 
 // SetDefaults_ClientConnectionConfiguration sets defaults for the k8s client connection.
