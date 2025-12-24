@@ -21,6 +21,7 @@ import (
 )
 
 const (
+	// ClusterTopologyName is the name of the default ClusterTopology resource managed by the operator.
 	ClusterTopologyName = "grove-topology"
 )
 

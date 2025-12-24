@@ -28,10 +28,10 @@ import (
 	grovelogger "github.com/ai-dynamo/grove/operator/internal/logger"
 	"github.com/ai-dynamo/grove/operator/internal/topology"
 	groveversion "github.com/ai-dynamo/grove/operator/internal/version"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/spf13/pflag"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
