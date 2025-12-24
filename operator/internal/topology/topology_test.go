@@ -22,6 +22,7 @@ import (
 
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
 	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+	"k8s.io/utils/ptr"
 
 	kaitopologyv1alpha1 "github.com/NVIDIA/KAI-scheduler/pkg/apis/kai/v1alpha1"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -68,283 +70,362 @@ func TestConvertClusterTopologyToKai(t *testing.T) {
 	assert.Equal(t, "topology.kubernetes.io/zone", kaiTopology.Spec.Levels[1].NodeLabel)
 }
 
-func TestEnsureTopology_Create(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
+func TestEnsureTopology(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(builder *fake.ClientBuilder)
+		levels      []configv1alpha1.TopologyLevel
+		wantErr     bool
+		errContains string
+		validate    func(*testing.T, client.Client)
+	}{
+		{
+			name:  "create_new",
+			setup: nil,
+			levels: []configv1alpha1.TopologyLevel{
+				{Domain: "zone", Key: "topology.kubernetes.io/zone"},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.NoError(t, err)
+				assert.Len(t, ct.Spec.Levels, 1)
+				assert.Equal(t, corev1alpha1.TopologyDomain("zone"), ct.Spec.Levels[0].Domain)
 
-	levels := []configv1alpha1.TopologyLevel{
-		{Domain: "zone", Key: "topology.kubernetes.io/zone"},
-	}
+				kai := &kaitopologyv1alpha1.Topology{}
+				err = c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kai)
+				require.NoError(t, err)
+				assert.Len(t, kai.Spec.Levels, 1)
+				assert.Equal(t, "topology.kubernetes.io/zone", kai.Spec.Levels[0].NodeLabel)
 
-	err := EnsureTopology(context.Background(), client, "test-topology", levels)
-	assert.NoError(t, err)
-
-	ct := &corev1alpha1.ClusterTopology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
-	assert.NoError(t, err)
-	assert.Len(t, ct.Spec.Levels, 1)
-
-	kaiTopology := &kaitopologyv1alpha1.Topology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kaiTopology)
-	assert.NoError(t, err)
-	assert.Len(t, kaiTopology.Spec.Levels, 1)
-	assert.Equal(t, "topology.kubernetes.io/zone", kaiTopology.Spec.Levels[0].NodeLabel)
-}
-
-func TestEnsureTopology_Update(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-
-	existing := &corev1alpha1.ClusterTopology{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-topology"},
-		Spec: corev1alpha1.ClusterTopologySpec{
-			Levels: []corev1alpha1.TopologyLevel{
-				{Domain: "zone", Key: "old-key"},
+				ownerRef := metav1.GetControllerOf(kai)
+				require.NotNil(t, ownerRef)
+				assert.Equal(t, "test-topology", ownerRef.Name)
 			},
 		},
-	}
+		{
+			name: "update_cluster_create_kai",
+			setup: func(builder *fake.ClientBuilder) {
+				existing := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						UID:  types.UID("cluster-uid"),
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "zone", Key: "old-key"},
+						},
+					},
+				}
+				builder.WithObjects(existing)
+			},
+			levels: []configv1alpha1.TopologyLevel{
+				{Domain: "zone", Key: "new-key"},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.NoError(t, err)
+				assert.Equal(t, "new-key", ct.Spec.Levels[0].Key)
 
-	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
-
-	levels := []configv1alpha1.TopologyLevel{
-		{Domain: "zone", Key: "new-key"},
-	}
-
-	err := EnsureTopology(context.Background(), client, "test-topology", levels)
-	assert.NoError(t, err)
-
-	ct := &corev1alpha1.ClusterTopology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
-	assert.NoError(t, err)
-	assert.Equal(t, "new-key", ct.Spec.Levels[0].Key)
-
-	kaiTopology := &kaitopologyv1alpha1.Topology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kaiTopology)
-	assert.NoError(t, err)
-	assert.Len(t, kaiTopology.Spec.Levels, 1)
-	assert.Equal(t, "new-key", kaiTopology.Spec.Levels[0].NodeLabel)
-}
-
-func Test_ensureKAITopology_CreateNew(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	clusterTopology := &corev1alpha1.ClusterTopology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			UID:  types.UID("cluster-topology-uid"),
+				kai := &kaitopologyv1alpha1.Topology{}
+				err = c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kai)
+				require.NoError(t, err)
+				assert.Len(t, kai.Spec.Levels, 1)
+				assert.Equal(t, "new-key", kai.Spec.Levels[0].NodeLabel)
+			},
 		},
-		Spec: corev1alpha1.ClusterTopologySpec{
-			Levels: []corev1alpha1.TopologyLevel{
+		{
+			name: "both_exist_unchanged",
+			setup: func(builder *fake.ClientBuilder) {
+				ct := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						UID:  types.UID("cluster-uid"),
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "region", Key: "topology.kubernetes.io/region"},
+						},
+					},
+				}
+
+				kai := &kaitopologyv1alpha1.Topology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "core.grove.io/v1alpha1",
+								Kind:               "ClusterTopology",
+								Name:               "test-topology",
+								UID:                ct.UID,
+								Controller:         ptr.To(true),
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+					},
+					Spec: kaitopologyv1alpha1.TopologySpec{
+						Levels: []kaitopologyv1alpha1.TopologyLevel{
+							{NodeLabel: "topology.kubernetes.io/region"},
+						},
+					},
+				}
+
+				builder.WithObjects(ct, kai)
+			},
+			levels: []configv1alpha1.TopologyLevel{
 				{Domain: "region", Key: "topology.kubernetes.io/region"},
 			},
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.NoError(t, err)
+				assert.Len(t, ct.Spec.Levels, 1)
+
+				kai := &kaitopologyv1alpha1.Topology{}
+				err = c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kai)
+				require.NoError(t, err)
+				assert.Len(t, kai.Spec.Levels, 1)
+			},
 		},
-	}
+		{
+			name: "both_need_changes",
+			setup: func(builder *fake.ClientBuilder) {
+				ct := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						UID:  types.UID("cluster-uid"),
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "region", Key: "old-region-key"},
+						},
+					},
+				}
 
-	err := ensureKAITopology(context.Background(), client, clusterTopology)
-	assert.NoError(t, err)
+				kai := &kaitopologyv1alpha1.Topology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "core.grove.io/v1alpha1",
+								Kind:               "ClusterTopology",
+								Name:               "test-topology",
+								UID:                ct.UID,
+								Controller:         ptr.To(true),
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+					},
+					Spec: kaitopologyv1alpha1.TopologySpec{
+						Levels: []kaitopologyv1alpha1.TopologyLevel{
+							{NodeLabel: "old-region-key"},
+						},
+					},
+				}
 
-	kaiTopology := &kaitopologyv1alpha1.Topology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kaiTopology)
-	assert.NoError(t, err)
-	assert.Len(t, kaiTopology.Spec.Levels, 1)
-	assert.Equal(t, "topology.kubernetes.io/region", kaiTopology.Spec.Levels[0].NodeLabel)
+				builder.WithObjects(ct, kai)
+			},
+			levels: []configv1alpha1.TopologyLevel{
+				{Domain: "region", Key: "new-region-key"},
+				{Domain: "zone", Key: "topology.kubernetes.io/zone"},
+			},
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.NoError(t, err)
+				assert.Len(t, ct.Spec.Levels, 2)
+				assert.Equal(t, "new-region-key", ct.Spec.Levels[0].Key)
 
-	ownerRef := metav1.GetControllerOf(kaiTopology)
-	require.NotNil(t, ownerRef)
-	assert.Equal(t, "test-topology", ownerRef.Name)
-	assert.Equal(t, clusterTopology.UID, ownerRef.UID)
-}
-
-func Test_ensureKAITopology_ExistsUnchanged(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-
-	clusterTopology := &corev1alpha1.ClusterTopology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			UID:  types.UID("cluster-topology-uid"),
+				kai := &kaitopologyv1alpha1.Topology{}
+				err = c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kai)
+				require.NoError(t, err)
+				assert.Len(t, kai.Spec.Levels, 2)
+			},
 		},
-		Spec: corev1alpha1.ClusterTopologySpec{
-			Levels: []corev1alpha1.TopologyLevel{
+		{
+			name:    "empty_levels",
+			setup:   nil,
+			levels:  []configv1alpha1.TopologyLevel{},
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.NoError(t, err)
+				assert.Len(t, ct.Spec.Levels, 0)
+
+				kai := &kaitopologyv1alpha1.Topology{}
+				err = c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kai)
+				require.NoError(t, err)
+				assert.Len(t, kai.Spec.Levels, 0)
+			},
+		},
+		{
+			name: "kai_wrong_owner",
+			setup: func(builder *fake.ClientBuilder) {
+				ct := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						UID:  types.UID("cluster-uid"),
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "region", Key: "topology.kubernetes.io/region"},
+						},
+					},
+				}
+
+				kai := &kaitopologyv1alpha1.Topology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "core.grove.io/v1alpha1",
+								Kind:               "ClusterTopology",
+								Name:               "different-owner",
+								UID:                types.UID("different-uid"),
+								Controller:         ptr.To(true),
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+					},
+					Spec: kaitopologyv1alpha1.TopologySpec{
+						Levels: []kaitopologyv1alpha1.TopologyLevel{
+							{NodeLabel: "topology.kubernetes.io/region"},
+						},
+					},
+				}
+
+				builder.WithObjects(ct, kai)
+			},
+			levels: []configv1alpha1.TopologyLevel{
 				{Domain: "region", Key: "topology.kubernetes.io/region"},
 			},
+			wantErr:     true,
+			errContains: "owned by a different controller",
 		},
-	}
+		{
+			name: "kai_no_owner",
+			setup: func(builder *fake.ClientBuilder) {
+				ct := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						UID:  types.UID("cluster-uid"),
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "region", Key: "topology.kubernetes.io/region"},
+						},
+					},
+				}
 
-	existingKAI := &kaitopologyv1alpha1.Topology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         "core.grove.io/v1alpha1",
-					Kind:               "ClusterTopology",
-					Name:               "test-topology",
-					UID:                clusterTopology.UID,
-					Controller:         ptr(true),
-					BlockOwnerDeletion: ptr(true),
-				},
+				kai := &kaitopologyv1alpha1.Topology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+					},
+					Spec: kaitopologyv1alpha1.TopologySpec{
+						Levels: []kaitopologyv1alpha1.TopologyLevel{
+							{NodeLabel: "topology.kubernetes.io/region"},
+						},
+					},
+				}
+
+				builder.WithObjects(ct, kai)
 			},
-		},
-		Spec: kaitopologyv1alpha1.TopologySpec{
-			Levels: []kaitopologyv1alpha1.TopologyLevel{
-				{NodeLabel: "topology.kubernetes.io/region"},
-			},
-		},
-	}
-
-	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(clusterTopology, existingKAI).Build()
-
-	err := ensureKAITopology(context.Background(), client, clusterTopology)
-	assert.NoError(t, err)
-
-	kaiTopology := &kaitopologyv1alpha1.Topology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kaiTopology)
-	assert.NoError(t, err)
-	assert.Len(t, kaiTopology.Spec.Levels, 1)
-	assert.Equal(t, "topology.kubernetes.io/region", kaiTopology.Spec.Levels[0].NodeLabel)
-}
-
-func Test_ensureKAITopology_WrongOwner(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-
-	clusterTopology := &corev1alpha1.ClusterTopology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			UID:  types.UID("cluster-topology-uid"),
-		},
-		Spec: corev1alpha1.ClusterTopologySpec{
-			Levels: []corev1alpha1.TopologyLevel{
+			levels: []configv1alpha1.TopologyLevel{
 				{Domain: "region", Key: "topology.kubernetes.io/region"},
 			},
+			wantErr:     true,
+			errContains: "owned by a different controller",
 		},
-	}
+		{
+			name: "levels_change_recreate_kai",
+			setup: func(builder *fake.ClientBuilder) {
+				ct := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						UID:  types.UID("cluster-uid"),
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "region", Key: "topology.kubernetes.io/region"},
+						},
+					},
+				}
 
-	existingKAI := &kaitopologyv1alpha1.Topology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         "core.grove.io/v1alpha1",
-					Kind:               "ClusterTopology",
-					Name:               "different-owner",
-					UID:                types.UID("different-uid"),
-					Controller:         ptr(true),
-					BlockOwnerDeletion: ptr(true),
-				},
+				kai := &kaitopologyv1alpha1.Topology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         "core.grove.io/v1alpha1",
+								Kind:               "ClusterTopology",
+								Name:               "test-topology",
+								UID:                ct.UID,
+								Controller:         ptr.To(true),
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+					},
+					Spec: kaitopologyv1alpha1.TopologySpec{
+						Levels: []kaitopologyv1alpha1.TopologyLevel{
+							{NodeLabel: "old-label"},
+						},
+					},
+				}
+
+				builder.WithObjects(ct, kai)
 			},
-		},
-		Spec: kaitopologyv1alpha1.TopologySpec{
-			Levels: []kaitopologyv1alpha1.TopologyLevel{
-				{NodeLabel: "topology.kubernetes.io/region"},
-			},
-		},
-	}
-
-	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(clusterTopology, existingKAI).Build()
-
-	err := ensureKAITopology(context.Background(), client, clusterTopology)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "owned by a different controller")
-}
-
-func Test_ensureKAITopology_RecreateOnLevelsChange(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-
-	clusterTopology := &corev1alpha1.ClusterTopology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			UID:  types.UID("cluster-topology-uid"),
-		},
-		Spec: corev1alpha1.ClusterTopologySpec{
-			Levels: []corev1alpha1.TopologyLevel{
+			levels: []configv1alpha1.TopologyLevel{
 				{Domain: "region", Key: "topology.kubernetes.io/region"},
 				{Domain: "zone", Key: "topology.kubernetes.io/zone"},
 			},
-		},
-	}
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.NoError(t, err)
+				assert.Len(t, ct.Spec.Levels, 2)
 
-	existingKAI := &kaitopologyv1alpha1.Topology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         "core.grove.io/v1alpha1",
-					Kind:               "ClusterTopology",
-					Name:               "test-topology",
-					UID:                clusterTopology.UID,
-					Controller:         ptr(true),
-					BlockOwnerDeletion: ptr(true),
-				},
-			},
-		},
-		Spec: kaitopologyv1alpha1.TopologySpec{
-			Levels: []kaitopologyv1alpha1.TopologyLevel{
-				{NodeLabel: "old-label"},
+				kai := &kaitopologyv1alpha1.Topology{}
+				err = c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kai)
+				require.NoError(t, err)
+				assert.Len(t, kai.Spec.Levels, 2)
+				assert.Equal(t, "topology.kubernetes.io/region", kai.Spec.Levels[0].NodeLabel)
+				assert.Equal(t, "topology.kubernetes.io/zone", kai.Spec.Levels[1].NodeLabel)
 			},
 		},
 	}
 
-	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(clusterTopology, existingKAI).Build()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			_ = corev1alpha1.AddToScheme(scheme)
+			_ = kaitopologyv1alpha1.AddToScheme(scheme)
 
-	err := ensureKAITopology(context.Background(), client, clusterTopology)
-	assert.NoError(t, err)
+			builder := fake.NewClientBuilder().WithScheme(scheme)
+			if tt.setup != nil {
+				tt.setup(builder)
+			}
+			c := builder.Build()
 
-	kaiTopology := &kaitopologyv1alpha1.Topology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, kaiTopology)
-	assert.NoError(t, err)
-	assert.Len(t, kaiTopology.Spec.Levels, 2)
-	assert.Equal(t, "topology.kubernetes.io/region", kaiTopology.Spec.Levels[0].NodeLabel)
-	assert.Equal(t, "topology.kubernetes.io/zone", kaiTopology.Spec.Levels[1].NodeLabel)
-}
+			err := EnsureTopology(context.Background(), c, "test-topology", tt.levels)
 
-func Test_createKAITopology_Success(t *testing.T) {
-	scheme := runtime.NewScheme()
-	_ = corev1alpha1.AddToScheme(scheme)
-	_ = kaitopologyv1alpha1.AddToScheme(scheme)
-	client := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-	clusterTopology := &corev1alpha1.ClusterTopology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-topology",
-			UID:  types.UID("cluster-topology-uid"),
-		},
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				if tt.validate != nil {
+					tt.validate(t, c)
+				}
+			}
+		})
 	}
-
-	kaiTopology := &kaitopologyv1alpha1.Topology{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-kai-topology",
-		},
-		Spec: kaitopologyv1alpha1.TopologySpec{
-			Levels: []kaitopologyv1alpha1.TopologyLevel{
-				{NodeLabel: "topology.kubernetes.io/region"},
-			},
-		},
-	}
-
-	err := createKAITopology(context.Background(), client, clusterTopology, kaiTopology)
-	assert.NoError(t, err)
-
-	created := &kaitopologyv1alpha1.Topology{}
-	err = client.Get(context.Background(), types.NamespacedName{Name: "test-kai-topology"}, created)
-	assert.NoError(t, err)
-
-	ownerRef := metav1.GetControllerOf(created)
-	require.NotNil(t, ownerRef)
-	assert.Equal(t, "test-topology", ownerRef.Name)
-	assert.Equal(t, clusterTopology.UID, ownerRef.UID)
-}
-
-func ptr(b bool) *bool {
-	return &b
 }
