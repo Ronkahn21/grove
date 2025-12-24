@@ -219,6 +219,9 @@ const (
 	TopologyDomainNuma TopologyDomain = "numa"
 )
 
+// MaxTopologyLevels is the maximum number of topology levels supported.
+const MaxTopologyLevels = 7
+
 // TopologyLevel defines a single level in the topology hierarchy.
 type TopologyLevel struct {
 	// Domain is the predefined level identifier used in TopologyConstraint references.

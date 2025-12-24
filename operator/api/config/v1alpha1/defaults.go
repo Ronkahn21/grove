@@ -115,10 +115,3 @@ func SetDefaults_PodCliqueScalingGroupControllerConfiguration(obj *PodCliqueScal
 		obj.ConcurrentSyncs = ptr.To(1)
 	}
 }
-
-// SetDefaults_ClusterTopologyConfiguration sets defaults for the ClusterTopologyConfiguration.
-func SetDefaults_ClusterTopologyConfiguration(obj *ClusterTopologyConfiguration) {
-	if obj.Enabled && obj.Name == "" {
-		obj.Name = defaultTopologyName
-	}
-}

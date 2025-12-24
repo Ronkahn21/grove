@@ -123,36 +123,41 @@ func validateClusterTopologyConfiguration(clusterTopologyCfg configv1alpha1.Clus
 		return allErrs
 	}
 
-	if len(strings.TrimSpace(clusterTopologyCfg.Name)) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath.Child("name"), "name is required when topology is enabled"))
-	}
+	allErrs = validateClusterTopologyLevels(clusterTopologyCfg.Levels, fldPath.Child("levels"))
 
-	if len(clusterTopologyCfg.Levels) == 0 {
+	return allErrs
+}
+
+func validateClusterTopologyLevels(levels []configv1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if len(levels) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath.Child("levels"), "levels are required when topology is enabled"))
 	}
 
-	levelsPath := fldPath.Child("levels")
-	if len(clusterTopologyCfg.Levels) > 7 {
-		allErrs = append(allErrs, field.TooMany(levelsPath, len(clusterTopologyCfg.Levels), 7))
+	if len(levels) > configv1alpha1.MaxTopologyLevels {
+		allErrs = append(allErrs, field.TooMany(fldPath, len(levels), configv1alpha1.MaxTopologyLevels))
 	}
 
+	allErrs = append(allErrs, validateLevelsUniqueness(levels, fldPath)...)
+
+	return allErrs
+}
+
+func validateLevelsUniqueness(levels []configv1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
 	seenDomains := make(map[string]int)
-	for i, level := range clusterTopologyCfg.Levels {
+	seenKeys := make(map[string]int)
+	for i, level := range levels {
+		if _, exists := seenKeys[level.Key]; exists {
+			allErrs = append(allErrs, field.Duplicate(fldPath.Index(i).Child("key"), level.Key))
+		} else {
+			seenKeys[level.Key] = i
+		}
 		if _, exists := seenDomains[string(level.Domain)]; exists {
-			allErrs = append(allErrs, field.Duplicate(levelsPath.Index(i).Child("domain"), level.Domain))
+			allErrs = append(allErrs, field.Duplicate(fldPath.Index(i).Child("domain"), level.Domain))
 		} else {
 			seenDomains[string(level.Domain)] = i
 		}
 	}
-
-	seenKeys := make(map[string]int)
-	for i, level := range clusterTopologyCfg.Levels {
-		if _, exists := seenKeys[level.Key]; exists {
-			allErrs = append(allErrs, field.Duplicate(levelsPath.Index(i).Child("key"), level.Key))
-		} else {
-			seenKeys[level.Key] = i
-		}
-	}
-
 	return allErrs
 }
