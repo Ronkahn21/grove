@@ -28,6 +28,7 @@ import (
 	grovelogger "github.com/ai-dynamo/grove/operator/internal/logger"
 	"github.com/ai-dynamo/grove/operator/internal/topology"
 	groveversion "github.com/ai-dynamo/grove/operator/internal/version"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/spf13/pflag"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -65,7 +66,15 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 	if operatorCfg.ClusterTopology.Enabled {
-		if err = topology.EnsureTopology(ctx, mgr.GetClient(), corev1alpha1.ClusterTopologyName, operatorCfg.ClusterTopology.Levels); err != nil {
+		// create Kubernetes client for cluster topology
+		// the default client manager is not running prior (mgr.Start())
+		topologyK8sClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+		if err != nil {
+			logger.Error(err, "failed to create Kubernetes client")
+			os.Exit(1)
+		}
+		if err = topology.EnsureTopology(ctx, topologyK8sClient,
+			corev1alpha1.ClusterTopologyName, operatorCfg.ClusterTopology.Levels); err != nil {
 			logger.Error(err, "cannot create/update cluster topology, operator cannot start")
 			os.Exit(1)
 		}
