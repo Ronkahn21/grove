@@ -64,11 +64,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	topologyK8sClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
 	ctx := ctrl.SetupSignalHandler()
 	if operatorCfg.ClusterTopology.Enabled {
+		logger.Info("Topology is enabled")
 		// create a Kubernetes client for cluster topology
 		// the default client manager is not running prior (mgr.Start())
-		topologyK8sClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
 		if err != nil {
 			logger.Error(err, "failed to create Kubernetes client")
 			os.Exit(1)
@@ -77,6 +78,12 @@ func main() {
 			corev1alpha1.ClusterTopologyName, operatorCfg.ClusterTopology.Levels); err != nil {
 			logger.Error(err, "cannot create/update cluster topology, operator cannot start")
 			os.Exit(1)
+		}
+	} else {
+		logger.Info("Topology is disabled")
+		err = topology.EnsureDeleteClusterTopology(ctx, topologyK8sClient, corev1alpha1.ClusterTopologyName)
+		if err != nil {
+			logger.Error(err, "non-fatal: cannot delete cluster topology")
 		}
 	}
 

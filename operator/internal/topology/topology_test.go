@@ -26,6 +26,7 @@ import (
 	kaitopologyv1alpha1 "github.com/NVIDIA/KAI-scheduler/pkg/apis/kai/v1alpha1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -414,6 +415,78 @@ func TestEnsureTopology(t *testing.T) {
 			c := builder.Build()
 
 			err := EnsureTopology(context.Background(), c, "test-topology", tt.levels)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				if tt.validate != nil {
+					tt.validate(t, c)
+				}
+			}
+		})
+	}
+}
+
+func TestEnsureDeleteClusterTopology(t *testing.T) {
+	tests := []struct {
+		name        string
+		setup       func(builder *fake.ClientBuilder)
+		wantErr     bool
+		errContains string
+		validate    func(*testing.T, client.Client)
+	}{
+		{
+			name: "successful_delete",
+			setup: func(builder *fake.ClientBuilder) {
+				ct := &corev1alpha1.ClusterTopology{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-topology",
+					},
+					Spec: corev1alpha1.ClusterTopologySpec{
+						Levels: []corev1alpha1.TopologyLevel{
+							{Domain: "region", Key: "topology.kubernetes.io/region"},
+						},
+					},
+				}
+				builder.WithObjects(ct)
+			},
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.Error(t, err)
+				assert.True(t, apierrors.IsNotFound(err))
+			},
+		},
+		{
+			name:    "already_deleted",
+			setup:   nil,
+			wantErr: false,
+			validate: func(t *testing.T, c client.Client) {
+				ct := &corev1alpha1.ClusterTopology{}
+				err := c.Get(context.Background(), types.NamespacedName{Name: "test-topology"}, ct)
+				require.Error(t, err)
+				assert.True(t, apierrors.IsNotFound(err))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			_ = corev1alpha1.AddToScheme(scheme)
+
+			builder := fake.NewClientBuilder().WithScheme(scheme)
+			if tt.setup != nil {
+				tt.setup(builder)
+			}
+			c := builder.Build()
+
+			err := EnsureDeleteClusterTopology(context.Background(), c, "test-topology")
 
 			if tt.wantErr {
 				require.Error(t, err)

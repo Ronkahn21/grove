@@ -175,3 +175,17 @@ func ensureKAITopology(ctx context.Context, client client.Client, clusterTopolog
 	logger.Info("KAI topology unchanged", "name", desiredKaiTopology.Name)
 	return nil
 }
+
+// EnsureDeleteClusterTopology deletes the ClusterTopology with the given name if it exists
+func EnsureDeleteClusterTopology(ctx context.Context, client client.Client, name string) error {
+	kaiTopology := &corev1alpha1.ClusterTopology{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+	err := client.Delete(ctx, kaiTopology)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete Cluster-Topology: %w", err)
+	}
+	return nil
+}
