@@ -61,17 +61,7 @@ config:
   logLevel: info
   logFormat: json
   clusterTopology:
-    enabled: true
-    name: default
-    levels:
-      - domain: region
-        key: region
-      - domain: zone
-        key: zone
-      - domain: datacenter
-        key: datacenter
-      - domain: block
-        key: block
+    enabled: false
   authorizer:
     enabled: false
     exemptServiceAccountUserNames:
