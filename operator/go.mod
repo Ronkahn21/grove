@@ -1,6 +1,6 @@
 module github.com/ai-dynamo/grove/operator
 
-go 1.24.0
+go 1.24.5
 
 require (
 	github.com/NVIDIA/KAI-scheduler v0.12.0
