@@ -41,7 +41,7 @@ type CLIOptions struct {
 }
 
 // RegisterFlags registers all the flags that are defined for the init container.
-func (c *CLIOptions) RegisterFlags(fs *pflag.FlagSet) {
+func (c *CLIOptions) RegisterFlags() {
 	// --podcliques=<podclique-fqn>:<minAvailable-replicas>
 	// --podcliques=podclique-a:3 --podcliques=podclique-b:4 and so on for each PodClique.
 	pflag.StringArrayVarP(&c.podCliques, "podcliques", "p", nil, "podclique name and minAvailable replicas seperated by comma, repeated for each podclique")
@@ -88,7 +88,7 @@ func InitializeCLIOptions() (CLIOptions, error) {
 	config := CLIOptions{
 		podCliques: make([]string, 0),
 	}
-	config.RegisterFlags(pflag.CommandLine)
+	config.RegisterFlags()
 	pflag.Parse()
 	return config, nil
 }

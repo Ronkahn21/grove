@@ -26,8 +26,6 @@ import (
 // These variables have been borrowed from k8s.io/component-base repository. We do not want
 // the dependencies that k8s.io/component-base pulls in as the attempt is the keep a lean set of dependencies.
 var (
-	// programName is the name of the operator.
-	programName = "grove-operator"
 	// gitVersion is the semantic version for grove operator.
 	gitVersion = "v0.0.0-master+$Format:%H$"
 	// gitCommit is the SHA1 from git, output of $(git rev-parse HEAD)
@@ -75,25 +73,3 @@ func (g GroveInfo) Verbose() string {
 	}
 	return string(infoBytes)
 }
-
-//// Get returns the version details for the grove operator.
-//func Get(verbose bool) apimachineryversion.Info {
-//	return apimachineryversion.Info{
-//		GitVersion:   gitVersion,
-//		GitCommit:    gitCommit,
-//		GitTreeState: gitTreeState,
-//		BuildDate:    buildDate,
-//		GoVersion:    runtime.Version(),
-//		Compiler:     runtime.Compiler,
-//		Platform:     fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-//	}
-//}
-
-//// PrintVersionAndExitIfRequested will check if --version is passed and if it is
-//// then it will print the version information and quit.
-//func PrintVersionAndExitIfRequested() {
-//	if versionFlag {
-//		_, _ = fmt.Fprintf(io.Writer(os.Stdout), "%s %v\n", programName, Get())
-//		os.Exit(0)
-//	}
-//}
