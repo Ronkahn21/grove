@@ -86,7 +86,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MaxItems: 7 <br />MinItems: 1 <br /> |
+| `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MinItems: 1 <br /> |
 
 
 #### ErrorCode
@@ -608,9 +608,7 @@ _Appears in:_
 
 _Underlying type:_ _string_
 
-TopologyDomain represents a predefined topology level in the hierarchy.
-Topology ordering (broadest to narrowest):
-Region > Zone > DataCenter > Block > Rack > Host > Numa
+TopologyDomain represents a level in the cluster topology hierarchy.
 
 
 
@@ -634,15 +632,18 @@ _Appears in:_
 
 
 TopologyLevel defines a single level in the topology hierarchy.
+Maps a platform-agnostic domain to a platform-specific node label key,
+allowing workload operators a consistent way to reference topology levels when defining TopologyConstraint's.
 
 
 
 _Appears in:_
+- [ClusterTopologyConfiguration](#clustertopologyconfiguration)
 - [ClusterTopologySpec](#clustertopologyspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `domain` _[TopologyDomain](#topologydomain)_ | Domain is the predefined level identifier used in TopologyConstraint references.<br />Must be one of: region, zone, datacenter, block, rack, host, numa |  | Enum: [region zone datacenter block rack host numa] <br />Required: \{\} <br /> |
+| `domain` _[TopologyDomain](#topologydomain)_ | Domain is a platform provider-agnostic level identifier.<br />Must be one of: region, zone, datacenter, block, rack, host, numa |  | Enum: [region zone datacenter block rack host numa] <br />Required: \{\} <br /> |
 | `key` _string_ | Key is the node label key that identifies this topology domain.<br />Must be a valid Kubernetes label key (qualified name).<br />Examples: "topology.kubernetes.io/zone", "kubernetes.io/hostname" |  | MaxLength: 63 <br />MinLength: 1 <br />Pattern: `^(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]/)?([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$` <br />Required: \{\} <br /> |
 
 
@@ -880,45 +881,6 @@ _Appears in:_
 | `webhooks` _[WebhookServer](#webhookserver)_ | Webhooks is the configuration for the HTTP(S) webhook server. |  |  |
 | `healthProbes` _[Server](#server)_ | HealthProbes is the configuration for serving the healthz and readyz endpoints. |  |  |
 | `metrics` _[Server](#server)_ | Metrics is the configuration for serving the metrics endpoint. |  |  |
-
-
-#### TopologyDomain
-
-_Underlying type:_ _string_
-
-TopologyDomain represents a predefined topology level in the hierarchy.
-
-
-
-_Appears in:_
-- [TopologyLevel](#topologylevel)
-
-| Field | Description |
-| --- | --- |
-| `region` | TopologyDomainRegion represents the region level in the topology hierarchy.<br /> |
-| `zone` | TopologyDomainZone represents the zone level in the topology hierarchy.<br /> |
-| `datacenter` | TopologyDomainDataCenter represents the datacenter level in the topology hierarchy.<br /> |
-| `block` | TopologyDomainBlock represents the block level in the topology hierarchy.<br /> |
-| `rack` | TopologyDomainRack represents the rack level in the topology hierarchy.<br /> |
-| `host` | TopologyDomainHost represents the host level in the topology hierarchy.<br /> |
-| `numa` | TopologyDomainNuma represents the numa level in the topology hierarchy.<br /> |
-
-
-#### TopologyLevel
-
-
-
-TopologyLevel defines a single level in the topology hierarchy.
-
-
-
-_Appears in:_
-- [ClusterTopologyConfiguration](#clustertopologyconfiguration)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `domain` _[TopologyDomain](#topologydomain)_ | Domain is the predefined level identifier used in TopologyConstraint references. |  |  |
-| `key` _string_ | Key is the node label key that identifies this topology domain. |  |  |
 
 
 #### WebhookServer

@@ -17,6 +17,8 @@
 package v1alpha1
 
 import (
+	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -55,14 +57,14 @@ var (
 type OperatorConfiguration struct {
 	metav1.TypeMeta  `json:",inline"`
 	ClientConnection ClientConnectionConfiguration `json:"runtimeClientConnection"`
-	LeaderElection   LeaderElectionConfiguration
-	Server           ServerConfiguration          `json:"server"`
-	Debugging        *DebuggingConfiguration      `json:"debugging,omitempty"`
-	Controllers      ControllerConfiguration      `json:"controllers"`
-	LogLevel         LogLevel                     `json:"logLevel"`
-	LogFormat        LogFormat                    `json:"logFormat"`
-	Authorizer       AuthorizerConfig             `json:"authorizer"`
-	ClusterTopology  ClusterTopologyConfiguration `json:"clusterTopology"`
+	LeaderElection   LeaderElectionConfiguration   `json:"leaderElection"`
+	Server           ServerConfiguration           `json:"server"`
+	Debugging        *DebuggingConfiguration       `json:"debugging,omitempty"`
+	Controllers      ControllerConfiguration       `json:"controllers"`
+	LogLevel         LogLevel                      `json:"logLevel"`
+	LogFormat        LogFormat                     `json:"logFormat"`
+	Authorizer       AuthorizerConfig              `json:"authorizer"`
+	ClusterTopology  ClusterTopologyConfiguration  `json:"clusterTopology"`
 }
 
 // LeaderElectionConfiguration defines the configuration for the leader election.
@@ -196,36 +198,5 @@ type ClusterTopologyConfiguration struct {
 	// Levels is an ordered list of topology levels from broadest to narrowest scope.
 	// Used to create/update the ClusterTopology CR at operator startup.
 	// +optional
-	Levels []TopologyLevel `json:"levels,omitempty"`
-}
-
-// TopologyDomain represents a predefined topology level in the hierarchy.
-type TopologyDomain string
-
-const (
-	// TopologyDomainRegion represents the region level in the topology hierarchy.
-	TopologyDomainRegion TopologyDomain = "region"
-	// TopologyDomainZone represents the zone level in the topology hierarchy.
-	TopologyDomainZone TopologyDomain = "zone"
-	// TopologyDomainDataCenter represents the datacenter level in the topology hierarchy.
-	TopologyDomainDataCenter TopologyDomain = "datacenter"
-	// TopologyDomainBlock represents the block level in the topology hierarchy.
-	TopologyDomainBlock TopologyDomain = "block"
-	// TopologyDomainRack represents the rack level in the topology hierarchy.
-	TopologyDomainRack TopologyDomain = "rack"
-	// TopologyDomainHost represents the host level in the topology hierarchy.
-	TopologyDomainHost TopologyDomain = "host"
-	// TopologyDomainNuma represents the numa level in the topology hierarchy.
-	TopologyDomainNuma TopologyDomain = "numa"
-)
-
-// MaxTopologyLevels is the maximum number of topology levels supported.
-const MaxTopologyLevels = 7
-
-// TopologyLevel defines a single level in the topology hierarchy.
-type TopologyLevel struct {
-	// Domain is the predefined level identifier used in TopologyConstraint references.
-	Domain TopologyDomain `json:"domain"`
-	// Key is the node label key that identifies this topology domain.
-	Key string `json:"key"`
+	Levels []corev1alpha1.TopologyLevel `json:"levels,omitempty"`
 }

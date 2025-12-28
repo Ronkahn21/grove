@@ -46,7 +46,7 @@ const (
 var (
 	waitTillWebhookCertsReady  = cert.WaitTillWebhookCertsReady
 	registerControllersWithMgr = RegisterControllers
-	registerWebhooksWithMgr    = webhook.RegisterWebhooks
+	registerWebhooksWithMgr    = webhook.Register
 )
 
 // CreateManager creates the manager.
@@ -58,11 +58,11 @@ func CreateManager(operatorCfg *configv1alpha1.OperatorConfiguration) (ctrl.Mana
 func RegisterControllersAndWebhooks(mgr ctrl.Manager, logger logr.Logger, operatorCfg *configv1alpha1.OperatorConfiguration, certsReady chan struct{}) error {
 	// Controllers will not work unless the webhoooks are fully configured and operational.
 	// For webhooks to work cert-controller should finish its work of generating and injecting certificates.
-	waitTillWebhookCertsReady(logger, certsReady)
-	if err := registerControllersWithMgr(mgr, operatorCfg.Controllers); err != nil {
+	cert.WaitTillWebhookCertsReady(logger, certsReady)
+	if err := RegisterControllers(mgr, operatorCfg.Controllers); err != nil {
 		return err
 	}
-	if err := registerWebhooksWithMgr(mgr, operatorCfg.Authorizer); err != nil {
+	if err := webhook.Register(mgr, operatorCfg.Authorizer); err != nil {
 		return err
 	}
 	return nil

@@ -17,21 +17,26 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
+	"fmt"
+	"io"
 	"os"
 
+	apicommonconstants "github.com/ai-dynamo/grove/operator/api/common/constants"
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
 	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
-	groveopts "github.com/ai-dynamo/grove/operator/cmd/opts"
+	"github.com/ai-dynamo/grove/operator/cmd/cli"
+	"github.com/ai-dynamo/grove/operator/internal/clustertopology"
 	grovectrl "github.com/ai-dynamo/grove/operator/internal/controller"
 	"github.com/ai-dynamo/grove/operator/internal/controller/cert"
 	grovelogger "github.com/ai-dynamo/grove/operator/internal/logger"
-	"github.com/ai-dynamo/grove/operator/internal/topology"
 	groveversion "github.com/ai-dynamo/grove/operator/internal/version"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/spf13/pflag"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -40,89 +45,87 @@ var (
 
 func main() {
 	ctrl.SetLogger(grovelogger.MustNewLogger(false, configv1alpha1.InfoLevel, configv1alpha1.LogFormatJSON))
+	groveInfo := groveversion.New()
 
-	fs := pflag.CommandLine
-	groveversion.AddFlags(fs)
-	cliOpts := groveopts.NewCLIOptions(fs)
-
-	// parse and print command line flags
-	pflag.Parse()
-	groveversion.PrintVersionAndExitIfRequested()
-
-	logger.Info("Starting grove operator", "version", groveversion.Get())
-	printFlags()
-
-	operatorCfg, err := initializeOperatorConfig(cliOpts)
+	launchOpts, err := cli.ParseLaunchOptions(os.Args[1:])
 	if err != nil {
-		logger.Error(err, "failed to initialize operator configuration")
-		os.Exit(1)
+		handleErrorAndExit(err, cli.ExitErrParseCLIArgs)
+	}
+	if launchOpts.Version {
+		_, _ = fmt.Fprintf(io.Writer(os.Stdout), "%s %v\n", apicommonconstants.OperatorName, groveInfo)
+		os.Exit(cli.ExitSuccess)
+	}
+	//time.Sleep(20 * time.Minute)
+	operatorConfig, err := launchOpts.LoadAndValidateOperatorConfig()
+	if err != nil {
+		logger.Error(err, "failed to load operator config")
+		handleErrorAndExit(err, cli.ExitErrLoadOperatorConfig)
 	}
 
-	mgr, err := grovectrl.CreateManager(operatorCfg)
+	logger.Info("Starting grove operator", "grove-info", groveInfo.Verbose())
+	printFlags()
+
+	mgr, err := grovectrl.CreateManager(operatorConfig)
 	if err != nil {
 		logger.Error(err, "failed to create grove controller manager")
 		os.Exit(1)
 	}
 
-	topologyK8sClient, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
 	ctx := ctrl.SetupSignalHandler()
-	if operatorCfg.ClusterTopology.Enabled {
-		logger.Info("Topology is enabled")
-		// create a Kubernetes client for cluster topology
-		// the default client manager is not running prior (mgr.Start())
-		if err != nil {
-			logger.Error(err, "failed to create Kubernetes client")
-			os.Exit(1)
-		}
-		if err = topology.EnsureTopology(ctx, topologyK8sClient,
-			corev1alpha1.ClusterTopologyName, operatorCfg.ClusterTopology.Levels); err != nil {
-			logger.Error(err, "cannot create/update cluster topology, operator cannot start")
-			os.Exit(1)
-		}
-	} else {
-		logger.Info("Topology is disabled")
-		err = topology.EnsureDeleteClusterTopology(ctx, topologyK8sClient, corev1alpha1.ClusterTopologyName)
-		if err != nil {
-			logger.Error(err, "non-fatal: cannot delete cluster topology")
-		}
+
+	// Initialize or clean up ClusterTopology based on operator configuration.
+	// This must be done before starting the controllers that may depend on the ClusterTopology resource.
+	// NOTE: In this version of the operator the synchronization will additionally ensure that the KAI Topology resource
+	// is created based on the ClusterTopology. When we introduce support for pluggable scheduler backends,
+	// handling of scheduler specified resources will be delegated to the backend scheduler controller.
+	if err = synchronizeTopology(ctx, mgr, operatorConfig); err != nil {
+		logger.Error(err, "failed to synchronize cluster topology")
+		os.Exit(cli.ExitErrSynchronizeTopology)
 	}
 
 	webhookCertsReadyCh := make(chan struct{})
-	if err = cert.ManageWebhookCerts(mgr, operatorCfg.Server.Webhooks.ServerCertDir, operatorCfg.Authorizer.Enabled, webhookCertsReadyCh); err != nil {
+	if err = cert.ManageWebhookCerts(mgr, operatorConfig.Server.Webhooks.ServerCertDir, operatorConfig.Authorizer.Enabled, webhookCertsReadyCh); err != nil {
 		logger.Error(err, "failed to setup cert rotation")
-		os.Exit(1)
+		os.Exit(cli.ExitErrInitializeManager)
 	}
 
 	if err = grovectrl.SetupHealthAndReadinessEndpoints(mgr, webhookCertsReadyCh); err != nil {
 		logger.Error(err, "failed to set up health and readiness for grove controller manager")
-		os.Exit(1)
+		os.Exit(cli.ExitErrInitializeManager)
 	}
 
 	// Certificates need to be generated before the webhooks are started, which can only happen once the manager is started.
 	// Block while generating the certificates, and then start the webhooks.
 	go func() {
-		if err = grovectrl.RegisterControllersAndWebhooks(mgr, logger, operatorCfg, webhookCertsReadyCh); err != nil {
+		if err = grovectrl.RegisterControllersAndWebhooks(mgr, logger, operatorConfig, webhookCertsReadyCh); err != nil {
 			logger.Error(err, "failed to initialize grove controller manager")
-			os.Exit(1)
+			os.Exit(cli.ExitErrInitializeManager)
 		}
 	}()
 
 	logger.Info("Starting manager")
 	if err = mgr.Start(ctx); err != nil {
-		logger.Error(err, "Error running manager")
-		os.Exit(1)
+		logger.Error(err, "Error starting controller manager")
+		os.Exit(cli.ExitErrStart)
 	}
 }
 
-func initializeOperatorConfig(cliOpts *groveopts.CLIOptions) (*configv1alpha1.OperatorConfiguration, error) {
-	// complete and validate operator configuration
-	if err := cliOpts.Complete(); err != nil {
-		return nil, err
+func synchronizeTopology(ctx context.Context, mgr ctrl.Manager, operatorCfg *configv1alpha1.OperatorConfiguration) error {
+	cl, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		return fmt.Errorf("failed to create client for topology synchronization: %w", err)
 	}
-	if err := cliOpts.Validate(); err != nil {
-		return nil, err
+	if !operatorCfg.ClusterTopology.Enabled {
+		logger.Info("cluster topology is disabled, deleting existing ClusterTopology if any")
+		return clustertopology.DeleteClusterTopology(ctx, cl, corev1alpha1.DefaultClusterTopologyName)
 	}
-	return cliOpts.Config, nil
+	// create or update ClusterTopology based on configuration
+	clusterTopology, err := clustertopology.EnsureClusterTopology(ctx, cl, logger, corev1alpha1.DefaultClusterTopologyName, operatorCfg.ClusterTopology.Levels)
+	if err != nil {
+		return err
+	}
+	// create or update KAI Topology based on ClusterTopology
+	return clustertopology.EnsureKAITopology(ctx, cl, logger, corev1alpha1.DefaultClusterTopologyName, clusterTopology)
 }
 
 func printFlags() {
@@ -131,4 +134,13 @@ func printFlags() {
 		flagKVs = append(flagKVs, f.Name, f.Value.String())
 	})
 	logger.Info("Running with flags", flagKVs...)
+}
+
+// handleErrorAndExit gracefully handles errors before exiting the program.
+func handleErrorAndExit(err error, exitCode int) {
+	if errors.Is(err, pflag.ErrHelp) {
+		os.Exit(cli.ExitSuccess)
+	}
+	_, _ = fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+	os.Exit(exitCode)
 }

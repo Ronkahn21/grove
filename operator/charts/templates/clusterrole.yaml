@@ -27,7 +27,6 @@ rules:
   - podcliques/status
   - podcliquescalinggroups
   - clustertopologies
-  - clustertopologies/status
   - podcliquescalinggroups/status
   verbs:
   - create

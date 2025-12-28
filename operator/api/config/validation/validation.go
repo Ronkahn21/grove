@@ -17,9 +17,12 @@
 package validation
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
+	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -118,46 +121,47 @@ func mustBeGreaterThanZeroDuration(duration metav1.Duration, fldPath *field.Path
 // and validates domain and key uniqueness.
 func validateClusterTopologyConfiguration(clusterTopologyCfg configv1alpha1.ClusterTopologyConfiguration, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-
 	if !clusterTopologyCfg.Enabled {
 		return allErrs
 	}
-
 	allErrs = validateClusterTopologyLevels(clusterTopologyCfg.Levels, fldPath.Child("levels"))
-
 	return allErrs
 }
 
-func validateClusterTopologyLevels(levels []configv1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
+func validateClusterTopologyLevels(levels []corev1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if len(levels) == 0 {
 		allErrs = append(allErrs, field.Required(fldPath, "levels are required when topology is enabled"))
 	}
-
-	if len(levels) > configv1alpha1.MaxTopologyLevels {
-		allErrs = append(allErrs, field.TooMany(fldPath, len(levels), configv1alpha1.MaxTopologyLevels))
-	}
-
-	allErrs = append(allErrs, validateLevelsUniqueness(levels, fldPath)...)
-
+	allErrs = append(allErrs, mustHaveSupportedTopologyDomains(levels, fldPath)...)
+	allErrs = append(allErrs, mustHaveUniqueTopologyLevels(levels, fldPath)...)
 	return allErrs
 }
 
-func validateLevelsUniqueness(levels []configv1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
+func mustHaveSupportedTopologyDomains(levels []corev1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
 	allErrs := field.ErrorList{}
-	seenDomains := make(map[string]int)
-	seenKeys := make(map[string]int)
+	supportedDomains := corev1alpha1.SupportedTopologyDomains()
 	for i, level := range levels {
+		if !slices.Contains(supportedDomains, level.Domain) {
+			allErrs = append(allErrs, field.Invalid(fldPath.Index(i).Child("domain"), level.Domain, fmt.Sprintf("must be one of %v", supportedDomains)))
+		}
+	}
+	return allErrs
+}
+
+func mustHaveUniqueTopologyLevels(levels []corev1alpha1.TopologyLevel, fldPath *field.Path) field.ErrorList {
+	allErrs := field.ErrorList{}
+	seenDomains := make(map[corev1alpha1.TopologyDomain]struct{})
+	seenKeys := make(map[string]struct{})
+	for i, level := range levels {
+		if _, exists := seenDomains[level.Domain]; exists {
+			allErrs = append(allErrs, field.Duplicate(fldPath.Index(i).Child("domain"), level.Domain))
+		}
 		if _, exists := seenKeys[level.Key]; exists {
 			allErrs = append(allErrs, field.Duplicate(fldPath.Index(i).Child("key"), level.Key))
-		} else {
-			seenKeys[level.Key] = i
 		}
-		if _, exists := seenDomains[string(level.Domain)]; exists {
-			allErrs = append(allErrs, field.Duplicate(fldPath.Index(i).Child("domain"), level.Domain))
-		} else {
-			seenDomains[string(level.Domain)] = i
-		}
+		seenDomains[level.Domain] = struct{}{}
+		seenKeys[level.Key] = struct{}{}
 	}
 	return allErrs
 }

@@ -86,11 +86,6 @@ cover-html: test-cover
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated at coverage.html"
 
-# Run envtest tests (requires envtest binaries)
-.PHONY: test-envtest
-test-envtest: $(SETUP_ENVTEST)
-	@echo "Running envtest with CRD validation..."
-
 # Run e2e tests
 .PHONY: test-e2e
 test-e2e:
