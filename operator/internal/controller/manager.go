@@ -56,13 +56,13 @@ func CreateManager(operatorCfg *configv1alpha1.OperatorConfiguration) (ctrl.Mana
 
 // RegisterControllersAndWebhooks adds all the controllers and webhooks to the controller-manager using the passed in Config.
 func RegisterControllersAndWebhooks(mgr ctrl.Manager, logger logr.Logger, operatorCfg *configv1alpha1.OperatorConfiguration, certsReady chan struct{}) error {
-	// Controllers will not work unless the webhoooks are fully configured and operational.
+	// Controllers will not work unless the webhooks are fully configured and operational.
 	// For webhooks to work cert-controller should finish its work of generating and injecting certificates.
-	cert.WaitTillWebhookCertsReady(logger, certsReady)
-	if err := RegisterControllers(mgr, operatorCfg.Controllers); err != nil {
+	waitTillWebhookCertsReady(logger, certsReady)
+	if err := registerControllersWithMgr(mgr, operatorCfg.Controllers); err != nil {
 		return err
 	}
-	if err := webhook.Register(mgr, operatorCfg.Authorizer); err != nil {
+	if err := registerWebhooksWithMgr(mgr, operatorCfg.Authorizer); err != nil {
 		return err
 	}
 	return nil
