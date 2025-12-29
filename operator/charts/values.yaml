@@ -128,6 +128,20 @@ clusterRoleBinding:
     app.kubernetes.io/name: grove-operator
     app.kubernetes.io/part-of: grove
 
+leaseRole:
+  name: grove:system:grove-operator-lease
+  labels:
+    app.kubernetes.io/component: operator-lease-role
+    app.kubernetes.io/name: grove-operator
+    app.kubernetes.io/part-of: grove
+
+leaseRoleBinding:
+  name: grove:system:grove-operator-lease
+  labels:
+    app.kubernetes.io/component: operator-lease-rolebinding
+    app.kubernetes.io/name: grove-operator
+    app.kubernetes.io/part-of: grove
+
 webhooks:
   podCliqueSetValidationWebhook:
     labels:
