@@ -60,8 +60,8 @@ func New() GroveInfo {
 	}
 }
 
-// String returns the version information.
-func (g GroveInfo) String() string {
+// Version returns the version information for Grove operator.
+func (g GroveInfo) Version() string {
 	return g.GitVersion
 }
 

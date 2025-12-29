@@ -33,10 +33,10 @@ import (
 	"github.com/ai-dynamo/grove/operator/internal/controller/cert"
 	grovelogger "github.com/ai-dynamo/grove/operator/internal/logger"
 	groveversion "github.com/ai-dynamo/grove/operator/internal/version"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/spf13/pflag"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -55,7 +55,6 @@ func main() {
 		_, _ = fmt.Fprintf(io.Writer(os.Stdout), "%s %v\n", apicommonconstants.OperatorName, groveInfo)
 		os.Exit(cli.ExitSuccess)
 	}
-	//time.Sleep(20 * time.Minute)
 	operatorConfig, err := launchOpts.LoadAndValidateOperatorConfig()
 	if err != nil {
 		logger.Error(err, "failed to load operator config")
@@ -68,7 +67,7 @@ func main() {
 	mgr, err := grovectrl.CreateManager(operatorConfig)
 	if err != nil {
 		logger.Error(err, "failed to create grove controller manager")
-		os.Exit(1)
+		handleErrorAndExit(err, cli.ExitErrInitializeManager)
 	}
 
 	ctx := ctrl.SetupSignalHandler()
@@ -80,18 +79,18 @@ func main() {
 	// handling of scheduler specified resources will be delegated to the backend scheduler controller.
 	if err = synchronizeTopology(ctx, mgr, operatorConfig); err != nil {
 		logger.Error(err, "failed to synchronize cluster topology")
-		os.Exit(cli.ExitErrSynchronizeTopology)
+		handleErrorAndExit(err, cli.ExitErrSynchronizeTopology)
 	}
 
 	webhookCertsReadyCh := make(chan struct{})
 	if err = cert.ManageWebhookCerts(mgr, operatorConfig.Server.Webhooks.ServerCertDir, operatorConfig.Authorizer.Enabled, webhookCertsReadyCh); err != nil {
 		logger.Error(err, "failed to setup cert rotation")
-		os.Exit(cli.ExitErrInitializeManager)
+		handleErrorAndExit(err, cli.ExitErrInitializeManager)
 	}
 
 	if err = grovectrl.SetupHealthAndReadinessEndpoints(mgr, webhookCertsReadyCh); err != nil {
 		logger.Error(err, "failed to set up health and readiness for grove controller manager")
-		os.Exit(cli.ExitErrInitializeManager)
+		handleErrorAndExit(err, cli.ExitErrInitializeManager)
 	}
 
 	// Certificates need to be generated before the webhooks are started, which can only happen once the manager is started.
@@ -99,14 +98,14 @@ func main() {
 	go func() {
 		if err = grovectrl.RegisterControllersAndWebhooks(mgr, logger, operatorConfig, webhookCertsReadyCh); err != nil {
 			logger.Error(err, "failed to initialize grove controller manager")
-			os.Exit(cli.ExitErrInitializeManager)
+			handleErrorAndExit(err, cli.ExitErrInitializeManager)
 		}
 	}()
 
 	logger.Info("Starting manager")
 	if err = mgr.Start(ctx); err != nil {
 		logger.Error(err, "Error starting controller manager")
-		os.Exit(cli.ExitErrStart)
+		handleErrorAndExit(err, cli.ExitErrStart)
 	}
 }
 

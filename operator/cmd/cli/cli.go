@@ -23,10 +23,10 @@ import (
 	apicommonconstants "github.com/ai-dynamo/grove/operator/api/common/constants"
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
 	operatorvalidation "github.com/ai-dynamo/grove/operator/api/config/validation"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 )
 
 const (

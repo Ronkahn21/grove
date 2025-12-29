@@ -86,7 +86,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MinItems: 1 <br /> |
+| `levels` _[TopologyLevel](#topologylevel) array_ | Levels is an ordered list of topology levels from broadest to narrowest scope.<br />The order in this list defines the hierarchy (index 0 = broadest level).<br />This field is immutable after creation. |  | MaxItems: 7 <br />MinItems: 1 <br /> |
 
 
 #### ErrorCode

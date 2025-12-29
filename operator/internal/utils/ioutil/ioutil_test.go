@@ -60,7 +60,7 @@ func TestCloseQuietly(t *testing.T) {
 			name:      "closer is nil",
 			closer:    nil,
 			expectErr: false,
-			validate: func(_ *testing.T, closer io.Closer) {
+			validate: func(_ *testing.T, _ io.Closer) {
 				// No panic should occur, nothing to validate
 			},
 		},
