@@ -155,3 +155,17 @@ release: "{{ .Release.Name }}"
 {{ $key }}: {{ $val }}
 {{- end }}
 {{- end -}}
+
+{{- define "operator.lease.role.labels" -}}
+{{- include "common.chart.labels" . }}
+{{- range $key, $val := .Values.leaseRole.labels }}
+{{ $key }}: {{ $val }}
+{{- end }}
+{{- end -}}
+
+{{- define "operator.lease.rolebinding.labels" -}}
+{{- include "common.chart.labels" . }}
+{{- range $key, $val := .Values.leaseRoleBinding.labels }}
+{{ $key }}: {{ $val }}
+{{- end }}
+{{- end -}}
