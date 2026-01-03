@@ -26,7 +26,6 @@ import (
 	apicommon "github.com/ai-dynamo/grove/operator/api/common"
 	apicommonconstants "github.com/ai-dynamo/grove/operator/api/common/constants"
 	grovecorev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
-	"github.com/ai-dynamo/grove/operator/internal/clustertopology"
 	"github.com/ai-dynamo/grove/operator/internal/constants"
 	"github.com/ai-dynamo/grove/operator/internal/controller/common/component"
 	componentutils "github.com/ai-dynamo/grove/operator/internal/controller/common/component/utils"
@@ -81,7 +80,7 @@ func (r _resource) prepareSyncFlow(ctx context.Context, logger logr.Logger, pcs 
 	// externally defined ClusterTopology CR. Hence, fetching ClusterTopology CR here to keep the code future-proof.
 	sc.tasEnabled = r.tasConfig.Enabled
 	if r.tasConfig.Enabled {
-		sc.topologyLevels, err = clustertopology.GetClusterTopologyLevels(ctx, r.client, grovecorev1alpha1.DefaultClusterTopologyName)
+		sc.topologyLevels, err = r.getClusterTopologyLevels(ctx)
 		if err != nil {
 			return nil, groveerr.WrapError(err,
 				errCodeGetClusterTopologyLevels,
@@ -129,11 +128,9 @@ func (r _resource) getExistingPCLQsForPCS(ctx context.Context, pcs *grovecorev1a
 		return nil, err
 	}
 
-	// Return all PodCliques with matching labels. PodCliques can be owned either:
-	// 1. Directly by PCS (standalone pclqs)
-	// 2. By PCSG (scaling group member pclqs) - PCSG itself is owned by PCS
-	// Label matching ensures they belong to this PCS, no ownership filter needed.
-	return pclqList.Items, nil
+	return lo.Filter(pclqList.Items, func(pclq grovecorev1alpha1.PodClique, _ int) bool {
+		return metav1.IsControlledBy(&pclq, pcs)
+	}), nil
 }
 
 // computeExpectedPodGangs computes expected PodGangs based on PCS replicas and scaling groups.
@@ -210,7 +207,7 @@ func buildStandalonePCLQInfosForBasePodGang(sc *syncContext, pcsReplica int) []p
 		// Check if this PodClique belongs to a scaling group
 		pcsgConfig := componentutils.FindScalingGroupConfigForClique(sc.pcs.Spec.Template.PodCliqueScalingGroupConfigs, pclqTemplateSpec.Name)
 		if pcsgConfig == nil { // Standalone PodClique
-			pclqFQN := apicommon.GeneratePodCliqueName(apicommon.ResourceNameReplica{Name: sc.pcs.Name, Replica: pcsReplica}, pclqTemplateSpec.Name)
+			pclqFQN := apicommon.GeneratePodCliqueName(apicommon.ResourceNameReplica{Name: sc.pcs.Name, Replica: int(pcsReplica)}, pclqTemplateSpec.Name)
 			pclqInfos = append(pclqInfos, buildPodCliqueInfo(sc, pclqTemplateSpec, pclqFQN, false))
 		}
 	}
@@ -317,7 +314,10 @@ func createTopologyPackConstraint(sc *syncContext, resourceKind string, nsName t
 	// NOTE: Currently there is no provision in the PodCliqueSet API to specify preferred topology constraint.
 	// Operator assumes the densest level as preferred. If a provision is introduced in the API allowing users to specify
 	// preferred topology constraints in future then this logic will need to be updated accordingly.
-	pgPackConstraint := &groveschedulerv1alpha1.TopologyPackConstraint{}
+	preferredTopologyLevel := sc.topologyLevels[len(sc.topologyLevels)-1]
+	pgPackConstraint := groveschedulerv1alpha1.TopologyPackConstraint{
+		Preferred: ptr.To(preferredTopologyLevel.Key),
+	}
 	// If requiredTopologyConstraint is specified, set the required topology key accordingly.
 	if requiredTopologyConstraint != nil {
 		requiredTopologyLevel, found := lo.Find(sc.topologyLevels, func(topologyLevel grovecorev1alpha1.TopologyLevel) bool {
@@ -333,7 +333,7 @@ func createTopologyPackConstraint(sc *syncContext, resourceKind string, nsName t
 			pgPackConstraint.Required = ptr.To(requiredTopologyLevel.Key)
 		}
 	}
-	return &groveschedulerv1alpha1.TopologyConstraint{PackConstraint: pgPackConstraint}
+	return &groveschedulerv1alpha1.TopologyConstraint{PackConstraint: &pgPackConstraint}
 }
 
 // determinePodCliqueReplicas determines replica count considering HPA mutations.
@@ -353,6 +353,29 @@ func determinePodCliqueReplicas(sc *syncContext, pclqTemplateSpec *grovecorev1al
 		return pclqTemplateSpec.Spec.Replicas
 	}
 	return matchingPCLQ.Spec.Replicas
+}
+
+// identifyConstituentPCLQsForPCSGPodGang identifies PCLQs for a scaled PCSG PodGang.
+func identifyConstituentPCLQsForPCSGPodGang(pcs *grovecorev1alpha1.PodCliqueSet, pcsgFQN string, pcsgReplica int, cliqueNames []string) ([]pclqInfo, error) {
+	constituentPCLQs := make([]pclqInfo, 0, len(cliqueNames))
+	for _, pclqName := range cliqueNames {
+		pclqTemplate, ok := lo.Find(pcs.Spec.Template.Cliques, func(pclqTemplateSpec *grovecorev1alpha1.PodCliqueTemplateSpec) bool {
+			return pclqName == pclqTemplateSpec.Name
+		})
+		if !ok {
+			return nil, fmt.Errorf("PodCliqueScalingGroup references a PodClique that does not exist in the PodCliqueSet: %s", pclqName)
+		}
+
+		pclqFQN := apicommon.GeneratePodCliqueName(apicommon.ResourceNameReplica{Name: pcsgFQN, Replica: pcsgReplica}, pclqName)
+
+		// Create pclqInfo using consistent logic (note: we use template replicas here since this is for scaling group instances)
+		constituentPCLQs = append(constituentPCLQs, pclqInfo{
+			fqn:          pclqFQN,
+			replicas:     pclqTemplate.Spec.Replicas, // For scaling group instances, always use template replicas
+			minAvailable: *pclqTemplate.Spec.MinAvailable,
+		})
+	}
+	return constituentPCLQs, nil
 }
 
 // getExistingPCSGsForPCS fetches all existing PCSGs for the PodCliqueSet.
@@ -396,6 +419,17 @@ func (r _resource) getExistingPodsByPCLQForPCS(ctx context.Context, pcsObjectKey
 	}
 
 	return podsByPCLQ, nil
+}
+
+func (r _resource) getClusterTopologyLevels(ctx context.Context) ([]grovecorev1alpha1.TopologyLevel, error) {
+	if !r.tasConfig.Enabled {
+		return nil, nil
+	}
+	clusterTopology := &grovecorev1alpha1.ClusterTopology{}
+	if err := r.client.Get(ctx, client.ObjectKey{Name: grovecorev1alpha1.DefaultClusterTopologyName}, clusterTopology); err != nil {
+		return nil, err
+	}
+	return clusterTopology.Spec.Levels, nil
 }
 
 // runSyncFlow executes the PodGang synchronization workflow.
