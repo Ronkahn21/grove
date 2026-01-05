@@ -26,15 +26,19 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TestTopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup.
-// This test validates the basic topology infrastructure without deploying any workloads.
-func TestTopologyInfrastructure(t *testing.T) {
+// Test_TI1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
+// Scenario TI-1 (Topology Infrastructure Setup):
+// 1. Verify ClusterTopology CR exists with correct 4-level hierarchy (zone, block, rack, host)
+// 2. Verify KAI Topology CR exists with matching levels
+// 3. Verify KAI Topology has owner reference to ClusterTopology
+// 4. Verify worker nodes have topology labels
+func Test_TOP_TI1_TopologyInfrastructure(t *testing.T) {
 	ctx := context.Background()
 
 	clientset, _, dynamicClient, cleanup := prepareTestCluster(ctx, t, 0)
 	defer cleanup()
 
-	t.Log("Verifying ClusterTopology CR exists and has correct levels")
+	logger.Info("1. Verify ClusterTopology CR exists with correct 4-level hierarchy")
 
 	expectedLevels := []corev1alpha1.TopologyLevel{
 		{Domain: corev1alpha1.TopologyDomainZone, Key: "kubernetes.io/zone"},
@@ -47,9 +51,7 @@ func TestTopologyInfrastructure(t *testing.T) {
 		t.Fatalf("Failed to verify ClusterTopology levels: %v", err)
 	}
 
-	t.Log("ClusterTopology verified successfully")
-
-	t.Log("Verifying KAI Topology CR exists and has correct levels")
+	logger.Info("2. Verify KAI Topology CR exists with matching levels and owner reference")
 
 	expectedKeys := []string{
 		"kubernetes.io/zone",
@@ -62,9 +64,7 @@ func TestTopologyInfrastructure(t *testing.T) {
 		t.Fatalf("Failed to verify KAI Topology levels: %v", err)
 	}
 
-	t.Log("KAI Topology verified successfully")
-
-	t.Log("Verifying worker nodes have topology labels")
+	logger.Info("3. Verify worker nodes have topology labels")
 
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -104,6 +104,153 @@ func TestTopologyInfrastructure(t *testing.T) {
 		t.Fatal("No worker nodes found in cluster")
 	}
 
-	t.Logf("Successfully verified topology labels on %d worker nodes", workerCount)
-	t.Log("Topology infrastructure test completed successfully")
+	logger.Infof("Successfully verified topology labels on %d worker nodes", workerCount)
+	logger.Info("🎉 Topology Infrastructure test completed successfully!")
+}
+
+// Test_TOP_BP1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
+// Scenario BP-1:
+// 1. Deploy workload with PCS (no constraint) containing 2 cliques:
+//   - worker-rack: packDomain=rack (3 pods)
+//   - worker-block: packDomain=block (4 pods)
+//
+// 2. Verify all 7 pods are scheduled successfully
+// 3. Verify worker-rack pods (3) are in the same rack
+// 4. Verify worker-block pods (4) are in the same block
+// 5. Verify different cliques can have independent topology constraints
+func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 7-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 7)
+	defer cleanup()
+
+	expectedPods := 7 // worker-rack: 3 pods, worker-block: 4 pods
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "workload7",
+			YAMLPath:     "../yaml/workload7.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload7 (BP-1: multiple cliques with different constraints)")
+	if _, err := deployAndVerifyWorkload(tc); err != nil {
+		t.Fatalf("Failed to deploy workload: %v", err)
+	}
+
+	logger.Info("3. Wait for all pods to be scheduled and running")
+	if err := waitForPodsReady(tc, expectedPods); err != nil {
+		t.Fatalf("Failed to wait for pods ready: %v", err)
+	}
+
+	logger.Info("4. Verify worker-rack pods (3) are in the same rack")
+	rackPods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload7-0-worker-rack")
+	if err != nil {
+		t.Fatalf("Failed to get worker-rack pods: %v", err)
+	}
+	if len(rackPods) != 3 {
+		t.Fatalf("Expected 3 worker-rack pods, got %d", len(rackPods))
+	}
+
+	if err := verifyPodsInSameTopologyDomain(tc, rackPods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify worker-rack pods in same rack: %v", err)
+	}
+
+	logger.Info("5. Verify worker-block pods (4) are in the same block")
+	blockPods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload7-0-worker-block")
+	if err != nil {
+		t.Fatalf("Failed to get worker-block pods: %v", err)
+	}
+	if len(blockPods) != 4 {
+		t.Fatalf("Expected 4 worker-block pods, got %d", len(blockPods))
+	}
+
+	if err := verifyPodsInSameTopologyDomain(tc, blockPods, "kubernetes.io/block"); err != nil {
+		t.Fatalf("Failed to verify worker-block pods in same block: %v", err)
+	}
+
+	logger.Info("🎉 BP-1: Multiple Cliques with Different Constraints test completed successfully!")
+}
+
+// Test_TOP_SP1_FullHierarchyWithCascadingConstraints tests complete PCS → PCSG → PCLQ hierarchy
+// Scenario SP-1:
+// 1. Deploy workload with full 3-level hierarchy:
+//   - PCS: packDomain=block
+//   - PCSG: packDomain=rack (stricter than block)
+//   - PodCliques (prefill, decode): packDomain=host (strictest)
+//
+// 2. Verify all 4 pods are scheduled successfully
+// 3. Verify all pods are on the same host (strictest constraint wins)
+// 4. Verify constraint inheritance and override behavior
+func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 4-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 4)
+	defer cleanup()
+
+	expectedPods := 4 // prefill: 2 pods, decode: 2 pods
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "workload8",
+			YAMLPath:     "../yaml/workload8.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload8 (SP-1: full 3-level hierarchy with cascading constraints)")
+	if _, err := deployAndVerifyWorkload(tc); err != nil {
+		t.Fatalf("Failed to deploy workload: %v", err)
+	}
+
+	logger.Info("3. Wait for all pods to be scheduled and running")
+	if err := waitForPodsReady(tc, expectedPods); err != nil {
+		t.Fatalf("Failed to wait for pods ready: %v", err)
+	}
+
+	logger.Info("4. Get all pods from both cliques")
+	allPods, err := getPodsWithLabel(tc, "app.kubernetes.io/part-of", "workload8")
+	if err != nil {
+		t.Fatalf("Failed to get workload pods: %v", err)
+	}
+	if len(allPods) != expectedPods {
+		t.Fatalf("Expected %d pods, got %d", expectedPods, len(allPods))
+	}
+
+	logger.Info("5. Verify all pods are on the same host (strictest constraint)")
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/hostname"); err != nil {
+		t.Fatalf("Failed to verify all pods on same host: %v", err)
+	}
+
+	// Also verify they're in same rack and block (cascade verification)
+	logger.Info("6. Verify cascading constraints: same block")
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/block"); err != nil {
+		t.Fatalf("Failed to verify all pods in same block: %v", err)
+	}
+
+	logger.Info("7. Verify cascading constraints: same rack")
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify all pods in same rack: %v", err)
+	}
+
+	logger.Info("🎉 SP-1: Full Hierarchy with Cascading Constraints test completed successfully!")
 }
