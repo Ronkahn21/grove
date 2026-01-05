@@ -512,11 +512,6 @@ configs:
 		return nil, cleanup, fmt.Errorf("could not create rest config: %w", err)
 	}
 
-	// Apply hierarchical topology labels to worker nodes
-	if err = applyTopologyLabels(ctx, restConfig, logger); err != nil {
-		return nil, cleanup, fmt.Errorf("failed to apply topology labels: %w", err)
-	}
-
 	return restConfig, cleanup, nil
 }
 
@@ -530,15 +525,15 @@ func getBlockForNodeIndex(idx int) string {
 }
 
 // getRackForNodeIndex returns the rack label for a given node index (0-based).
-// Distribution: 8 racks with 3-4 nodes each across 2 blocks.
+// Distribution: 4 racks with 7 nodes each across 2 blocks.
 func getRackForNodeIndex(idx int) string {
-	rackRanges := []int{3, 6, 9, 13, 17, 20, 23, 27}
+	rackRanges := []int{7, 13, 20, 27}
 	for rackNum, maxIdx := range rackRanges {
 		if idx <= maxIdx {
 			return fmt.Sprintf("rack-%d", rackNum+1)
 		}
 	}
-	return "rack-8"
+	return "rack-4"
 }
 
 // applyTopologyLabels applies hierarchical topology labels to worker nodes in the k3d cluster.
@@ -546,7 +541,7 @@ func getRackForNodeIndex(idx int) string {
 // Distribution strategy for 28 worker nodes:
 //   - Zone: all nodes in "zone-1"
 //   - Block: nodes 0-13 in "block-1", nodes 14-27 in "block-2"
-//   - Rack: 8 racks total (4 per block), 3-4 nodes each
+//   - Rack: 4 racks total (2 per block), 7 hosts per rack
 func applyTopologyLabels(ctx context.Context, restConfig *rest.Config, logger *utils.Logger) error {
 	logger.Info("🏷️  Applying hierarchical topology labels to worker nodes...")
 
@@ -693,6 +688,11 @@ func InstallCoreComponents(ctx context.Context, restConfig *rest.Config, kaiConf
 	// Check for any errors
 	for err := range errChan {
 		return err // Return the first error encountered
+	}
+
+	// Apply hierarchical topology labels to worker nodes
+	if err := applyTopologyLabels(ctx, restConfig, logger); err != nil {
+		return fmt.Errorf("failed to apply topology labels: %w", err)
 	}
 
 	logger.Debug("✅ All component installations completed successfully")
