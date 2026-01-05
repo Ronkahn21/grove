@@ -574,7 +574,7 @@ func applyTopologyLabels(ctx context.Context, restConfig *rest.Config, logger *u
 	sort.Slice(sortedNodes, func(i, j int) bool { return sortedNodes[i].Name < sortedNodes[j].Name })
 
 	for idx, node := range sortedNodes {
-		topologyLabels := fmt.Sprintf(`{"metadata":{"labels":{"kubernetes.io/zone":"zone=1","kubernetes.io/block":"%s","kubernetes.io/rack":"%s"}}}`,
+		topologyLabels := fmt.Sprintf(`{"metadata":{"labels":{"kubernetes.io/zone":"zone-1","kubernetes.io/block":"%s","kubernetes.io/rack":"%s"}}}`,
 			getBlockForNodeIndex(idx), getRackForNodeIndex(idx))
 
 		_, err := clientset.CoreV1().Nodes().Patch(
@@ -640,7 +640,7 @@ func InstallCoreComponents(ctx context.Context, restConfig *rest.Config, kaiConf
 			skaffoldConfig := &SkaffoldInstallConfig{
 				SkaffoldYAMLPath: absoluteSkaffoldYAMLPath,
 				RestConfig:       restConfig,
-				Profiles:         []string{"debug"},
+				Profiles:         []string{"topology-test"},
 				PushRepo:         fmt.Sprintf("localhost:%s", registryPort),
 				PullRepo:         fmt.Sprintf("registry:%s", registryPort),
 				Namespace:        OperatorNamespace,
