@@ -195,11 +195,11 @@ func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 4-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 4)
+	logger.Info("1. Initialize an 8-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 8)
 	defer cleanup()
 
-	expectedPods := 4 // prefill: 2 pods, decode: 2 pods
+	expectedPods := 8 // 2 PCSG replicas × (prefill: 2 pods + decode: 2 pods)
 	tc := TestContext{
 		T:             t,
 		Ctx:           ctx,
@@ -227,7 +227,79 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to wait for pods ready: %v", err)
 	}
 
-	logger.Info("4. Get all pods from both cliques")
+	logger.Info("4. Verify PCSG replica 0 prefill pods (2) are on same host (PCLQ constraint)")
+	prefill0Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-0-prefill")
+	if err != nil {
+		t.Fatalf("Failed to get prefill-0 pods: %v", err)
+	}
+	if len(prefill0Pods) != 2 {
+		t.Fatalf("Expected 2 prefill-0 pods, got %d", len(prefill0Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, prefill0Pods, "kubernetes.io/hostname"); err != nil {
+		t.Fatalf("Failed to verify prefill-0 pods on same host: %v", err)
+	}
+
+	logger.Info("5. Verify PCSG replica 0 decode pods (2) are on same host (PCLQ constraint)")
+	decode0Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-0-decode")
+	if err != nil {
+		t.Fatalf("Failed to get decode-0 pods: %v", err)
+	}
+	if len(decode0Pods) != 2 {
+		t.Fatalf("Expected 2 decode-0 pods, got %d", len(decode0Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, decode0Pods, "kubernetes.io/hostname"); err != nil {
+		t.Fatalf("Failed to verify decode-0 pods on same host: %v", err)
+	}
+
+	logger.Info("6. Verify PCSG replica 1 prefill pods (2) are on same host (PCLQ constraint)")
+	prefill1Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-1-prefill")
+	if err != nil {
+		t.Fatalf("Failed to get prefill-1 pods: %v", err)
+	}
+	if len(prefill1Pods) != 2 {
+		t.Fatalf("Expected 2 prefill-1 pods, got %d", len(prefill1Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, prefill1Pods, "kubernetes.io/hostname"); err != nil {
+		t.Fatalf("Failed to verify prefill-1 pods on same host: %v", err)
+	}
+
+	logger.Info("7. Verify PCSG replica 1 decode pods (2) are on same host (PCLQ constraint)")
+	decode1Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-1-decode")
+	if err != nil {
+		t.Fatalf("Failed to get decode-1 pods: %v", err)
+	}
+	if len(decode1Pods) != 2 {
+		t.Fatalf("Expected 2 decode-1 pods, got %d", len(decode1Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, decode1Pods, "kubernetes.io/hostname"); err != nil {
+		t.Fatalf("Failed to verify decode-1 pods on same host: %v", err)
+	}
+
+	logger.Info("8. Verify all PCSG replica 0 pods are in same rack (PCSG constraint)")
+	pcsg0Pods, err := getPodsWithLabel(tc, "grove.io/podcliquescalinggroup-replica-index", "0")
+	if err != nil {
+		t.Fatalf("Failed to get PCSG replica 0 pods: %v", err)
+	}
+	if len(pcsg0Pods) != 4 {
+		t.Fatalf("Expected 4 PCSG replica 0 pods, got %d", len(pcsg0Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, pcsg0Pods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify PCSG replica 0 pods in same rack: %v", err)
+	}
+
+	logger.Info("9. Verify all PCSG replica 1 pods are in same rack (PCSG constraint)")
+	pcsg1Pods, err := getPodsWithLabel(tc, "grove.io/podcliquescalinggroup-replica-index", "1")
+	if err != nil {
+		t.Fatalf("Failed to get PCSG replica 1 pods: %v", err)
+	}
+	if len(pcsg1Pods) != 4 {
+		t.Fatalf("Expected 4 PCSG replica 1 pods, got %d", len(pcsg1Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, pcsg1Pods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify PCSG replica 1 pods in same rack: %v", err)
+	}
+
+	logger.Info("10. Verify all pods are in same block (PCS constraint)")
 	allPods, err := getPodsWithLabel(tc, "app.kubernetes.io/part-of", "workload8")
 	if err != nil {
 		t.Fatalf("Failed to get workload pods: %v", err)
@@ -235,21 +307,8 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	if len(allPods) != expectedPods {
 		t.Fatalf("Expected %d pods, got %d", expectedPods, len(allPods))
 	}
-
-	logger.Info("5. Verify all pods are on the same host (strictest constraint)")
-	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/hostname"); err != nil {
-		t.Fatalf("Failed to verify all pods on same host: %v", err)
-	}
-
-	// Also verify they're in same rack and block (cascade verification)
-	logger.Info("6. Verify cascading constraints: same block")
 	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/block"); err != nil {
 		t.Fatalf("Failed to verify all pods in same block: %v", err)
-	}
-
-	logger.Info("7. Verify cascading constraints: same rack")
-	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/rack"); err != nil {
-		t.Fatalf("Failed to verify all pods in same rack: %v", err)
 	}
 
 	logger.Info("🎉 SP-1: Full Hierarchy with Cascading Constraints test completed successfully!")
