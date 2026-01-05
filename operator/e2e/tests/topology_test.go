@@ -20,9 +20,11 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -144,20 +146,13 @@ func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	}
 
 	logger.Info("2. Deploy workload7 (BP-1: multiple cliques with different constraints)")
-	if _, err := deployAndVerifyWorkload(tc); err != nil {
-		t.Fatalf("Failed to deploy workload: %v", err)
-	}
-
-	logger.Info("3. Wait for all pods to be scheduled and running")
-	if err := waitForPodsReady(tc, expectedPods); err != nil {
-		t.Fatalf("Failed to wait for pods ready: %v", err)
-	}
-
-	logger.Info("4. Verify worker-rack pods (3) are in the same rack")
-	rackPods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload7-0-worker-rack")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
-		t.Fatalf("Failed to get worker-rack pods: %v", err)
+		t.Fatalf("Setup failed: %v", err)
 	}
+
+	logger.Info("3. Verify worker-rack pods (3) are in the same rack")
+	rackPods := filterPodsByLabel(allPods, "grove.io/podclique", "workload7-0-worker-rack")
 	if len(rackPods) != 3 {
 		t.Fatalf("Expected 3 worker-rack pods, got %d", len(rackPods))
 	}
@@ -166,11 +161,8 @@ func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify worker-rack pods in same rack: %v", err)
 	}
 
-	logger.Info("5. Verify worker-block pods (4) are in the same block")
-	blockPods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload7-0-worker-block")
-	if err != nil {
-		t.Fatalf("Failed to get worker-block pods: %v", err)
-	}
+	logger.Info("4. Verify worker-block pods (4) are in the same block")
+	blockPods := filterPodsByLabel(allPods, "grove.io/podclique", "workload7-0-worker-block")
 	if len(blockPods) != 4 {
 		t.Fatalf("Expected 4 worker-block pods, got %d", len(blockPods))
 	}
@@ -189,7 +181,7 @@ func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 //   - PCSG: packDomain=rack (stricter than block)
 //   - PodCliques (prefill, decode): packDomain=host (strictest)
 //
-// 2. Verify all 4 pods are scheduled successfully
+// 2. Verify all 8 pods are scheduled successfully
 // 3. Verify all pods are on the same host (strictest constraint wins)
 // 4. Verify constraint inheritance and override behavior
 func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
@@ -218,20 +210,13 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	}
 
 	logger.Info("2. Deploy workload8 (SP-1: full 3-level hierarchy with cascading constraints)")
-	if _, err := deployAndVerifyWorkload(tc); err != nil {
-		t.Fatalf("Failed to deploy workload: %v", err)
-	}
-
-	logger.Info("3. Wait for all pods to be scheduled and running")
-	if err := waitForPodsReady(tc, expectedPods); err != nil {
-		t.Fatalf("Failed to wait for pods ready: %v", err)
-	}
-
-	logger.Info("4. Verify PCSG replica 0 prefill pods (2) are on same host (PCLQ constraint)")
-	prefill0Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-0-prefill")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
-		t.Fatalf("Failed to get prefill-0 pods: %v", err)
+		t.Fatalf("Setup failed: %v", err)
 	}
+
+	logger.Info("3. Verify PCSG replica 0 prefill pods (2) are on same host (PCLQ constraint)")
+	prefill0Pods := filterPodsByLabel(allPods, "grove.io/podclique", "workload8-0-inference-group-0-prefill")
 	if len(prefill0Pods) != 2 {
 		t.Fatalf("Expected 2 prefill-0 pods, got %d", len(prefill0Pods))
 	}
@@ -239,11 +224,8 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify prefill-0 pods on same host: %v", err)
 	}
 
-	logger.Info("5. Verify PCSG replica 0 decode pods (2) are on same host (PCLQ constraint)")
-	decode0Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-0-decode")
-	if err != nil {
-		t.Fatalf("Failed to get decode-0 pods: %v", err)
-	}
+	logger.Info("4. Verify PCSG replica 0 decode pods (2) are on same host (PCLQ constraint)")
+	decode0Pods := filterPodsByLabel(allPods, "grove.io/podclique", "workload8-0-inference-group-0-decode")
 	if len(decode0Pods) != 2 {
 		t.Fatalf("Expected 2 decode-0 pods, got %d", len(decode0Pods))
 	}
@@ -251,11 +233,8 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify decode-0 pods on same host: %v", err)
 	}
 
-	logger.Info("6. Verify PCSG replica 1 prefill pods (2) are on same host (PCLQ constraint)")
-	prefill1Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-1-prefill")
-	if err != nil {
-		t.Fatalf("Failed to get prefill-1 pods: %v", err)
-	}
+	logger.Info("5. Verify PCSG replica 1 prefill pods (2) are on same host (PCLQ constraint)")
+	prefill1Pods := filterPodsByLabel(allPods, "grove.io/podclique", "workload8-0-inference-group-1-prefill")
 	if len(prefill1Pods) != 2 {
 		t.Fatalf("Expected 2 prefill-1 pods, got %d", len(prefill1Pods))
 	}
@@ -263,11 +242,8 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify prefill-1 pods on same host: %v", err)
 	}
 
-	logger.Info("7. Verify PCSG replica 1 decode pods (2) are on same host (PCLQ constraint)")
-	decode1Pods, err := getPodsWithLabel(tc, "grove.io/podclique", "workload8-0-inference-group-1-decode")
-	if err != nil {
-		t.Fatalf("Failed to get decode-1 pods: %v", err)
-	}
+	logger.Info("6. Verify PCSG replica 1 decode pods (2) are on same host (PCLQ constraint)")
+	decode1Pods := filterPodsByLabel(allPods, "grove.io/podclique", "workload8-0-inference-group-1-decode")
 	if len(decode1Pods) != 2 {
 		t.Fatalf("Expected 2 decode-1 pods, got %d", len(decode1Pods))
 	}
@@ -275,11 +251,8 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify decode-1 pods on same host: %v", err)
 	}
 
-	logger.Info("8. Verify all PCSG replica 0 pods are in same rack (PCSG constraint)")
-	pcsg0Pods, err := getPodsWithLabel(tc, "grove.io/podcliquescalinggroup-replica-index", "0")
-	if err != nil {
-		t.Fatalf("Failed to get PCSG replica 0 pods: %v", err)
-	}
+	logger.Info("7. Verify all PCSG replica 0 pods are in same rack (PCSG constraint)")
+	pcsg0Pods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup-replica-index", "0")
 	if len(pcsg0Pods) != 4 {
 		t.Fatalf("Expected 4 PCSG replica 0 pods, got %d", len(pcsg0Pods))
 	}
@@ -287,11 +260,8 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify PCSG replica 0 pods in same rack: %v", err)
 	}
 
-	logger.Info("9. Verify all PCSG replica 1 pods are in same rack (PCSG constraint)")
-	pcsg1Pods, err := getPodsWithLabel(tc, "grove.io/podcliquescalinggroup-replica-index", "1")
-	if err != nil {
-		t.Fatalf("Failed to get PCSG replica 1 pods: %v", err)
-	}
+	logger.Info("8. Verify all PCSG replica 1 pods are in same rack (PCSG constraint)")
+	pcsg1Pods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup-replica-index", "1")
 	if len(pcsg1Pods) != 4 {
 		t.Fatalf("Expected 4 PCSG replica 1 pods, got %d", len(pcsg1Pods))
 	}
@@ -299,11 +269,7 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify PCSG replica 1 pods in same rack: %v", err)
 	}
 
-	logger.Info("10. Verify all pods are in same block (PCS constraint)")
-	allPods, err := getPodsWithLabel(tc, "app.kubernetes.io/part-of", "workload8")
-	if err != nil {
-		t.Fatalf("Failed to get workload pods: %v", err)
-	}
+	logger.Info("9. Verify all pods are in same block (PCS constraint)")
 	if len(allPods) != expectedPods {
 		t.Fatalf("Expected %d pods, got %d", expectedPods, len(allPods))
 	}
@@ -312,4 +278,104 @@ func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	}
 
 	logger.Info("🎉 SP-1: Full Hierarchy with Cascading Constraints test completed successfully!")
+}
+
+// deployWorkloadAndGetPods deploys workload, waits for pods, and returns the pod list
+func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error) {
+	if _, err := deployAndVerifyWorkload(tc); err != nil {
+		return nil, fmt.Errorf("failed to deploy workload: %w", err)
+	}
+
+	logger.Info("Wait for all pods to be scheduled and running")
+	if err := waitForPodsReady(tc, expectedPods); err != nil {
+		return nil, fmt.Errorf("failed to wait for pods ready: %w", err)
+	}
+
+	logger.Info("Get all pods once for verification")
+	podList, err := listPods(tc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	return podList.Items, nil
+}
+
+// Test_TOP_SP3_PCSGScalingWithTopologyConstraints tests PCSG scaling with topology constraints
+// Scenario SP-3:
+// 1. Deploy workload with PCSG scaling (3 replicas):
+//   - PCS: packDomain=rack, minAvailable=1
+//   - PCSG: replicas=3, packDomain=rack
+//   - PodClique (worker): 2 pods per replica
+//
+// 2. Verify all 6 pods (3 PCSG replicas × 2 pods) are scheduled successfully
+// 3. Verify each PCSG replica's pods are in the same rack
+// 4. Verify PCSG scaling creates multiple TopologyConstraintGroups
+// 5. Verify topology constraints work with PCSG-level scaling
+func Test_TOP_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	defer cleanup()
+
+	expectedPods := 6 // 3 PCSG replicas × 2 pods each
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "workload9",
+			YAMLPath:     "../yaml/workload9.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload9 (SP-3: PCSG scaling with topology constraints)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify PCSG replica 0 worker pods (2) are in same rack")
+	pcsg0Pods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup-replica-index", "0")
+	if len(pcsg0Pods) != 2 {
+		t.Fatalf("Expected 2 PCSG replica 0 pods, got %d", len(pcsg0Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, pcsg0Pods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify PCSG replica 0 pods in same rack: %v", err)
+	}
+
+	logger.Info("4. Verify PCSG replica 1 worker pods (2) are in same rack")
+	pcsg1Pods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup-replica-index", "1")
+	if len(pcsg1Pods) != 2 {
+		t.Fatalf("Expected 2 PCSG replica 1 pods, got %d", len(pcsg1Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, pcsg1Pods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify PCSG replica 1 pods in same rack: %v", err)
+	}
+
+	logger.Info("5. Verify PCSG replica 2 worker pods (2) are in same rack")
+	pcsg2Pods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup-replica-index", "2")
+	if len(pcsg2Pods) != 2 {
+		t.Fatalf("Expected 2 PCSG replica 2 pods, got %d", len(pcsg2Pods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, pcsg2Pods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify PCSG replica 2 pods in same rack: %v", err)
+	}
+
+	logger.Info("6. Verify all pods respect PCS-level rack constraint")
+	if len(allPods) != expectedPods {
+		t.Fatalf("Expected %d pods, got %d", expectedPods, len(allPods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify all pods in same rack: %v", err)
+	}
+
+	logger.Info("🎉 SP-3: PCSG Scaling with Topology Constraints test completed successfully!")
 }
