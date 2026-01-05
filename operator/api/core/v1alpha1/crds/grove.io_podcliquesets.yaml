@@ -10166,6 +10166,7 @@ spec:
                 type: integer
             required:
             - availableReplicas
+            - conditions
             - updatedReplicas
             type: object
         required:
