@@ -1,36 +1,26 @@
-# Workload 8: SP-1 - Full 3-Level Hierarchy with Cascading Constraints
-# Test scenario: PCS (block) → PCSG (rack) → PCLQ (host) - demonstrating constraint inheritance
+# Workload 7: BP-1 - PCS with Multiple PodCliques Having Different Constraints
+# Test scenario: PCS with no constraint, but individual cliques have different constraints (rack vs block)
 ---
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: workload8
+  name: top-indep-clq
   labels:
-    app: workload8
+    app: top-indep-clq
 spec:
   replicas: 1
   template:
-    topologyConstraint:
-      packDomain: block  # PCS level - broadest
-    podCliqueScalingGroups:
-      - name: inference-group
-        replicas: 2
-        minAvailable: 2
-        topologyConstraint:
-          packDomain: rack  # PCSG level - stricter than parent
-        cliqueNames:
-          - prefill
-          - decode
+    # NO topology constraint at PCS level
     cliques:
-      - name: prefill
+      - name: worker-rack
         labels:
           kai.scheduler/queue: test
-        topologyConstraint:
-          packDomain: host  # PCLQ level - strictest
         spec:
-          roleName: prefill
-          replicas: 2
-          minAvailable: 2
+          roleName: worker-rack
+          topologyConstraint:
+            packDomain: rack  # Rack-level packing
+          replicas: 3
+          minAvailable: 3
           podSpec:
             schedulerName: kai-scheduler
             affinity:
@@ -48,20 +38,20 @@ spec:
                 value: agent
                 effect: NoSchedule
             containers:
-              - name: prefill
+              - name: worker-rack
                 image: registry:5001/nginx:alpine-slim
                 resources:
                   requests:
                     memory: 80Mi
-      - name: decode
+      - name: worker-block
         labels:
           kai.scheduler/queue: test
-        topologyConstraint:
-          packDomain: host  # PCLQ level - strictest
         spec:
-          roleName: decode
-          replicas: 2
-          minAvailable: 2
+          roleName: worker-block
+          topologyConstraint:
+            packDomain: block  # Block-level packing (stricter)
+          replicas: 4
+          minAvailable: 4
           podSpec:
             schedulerName: kai-scheduler
             affinity:
@@ -79,8 +69,8 @@ spec:
                 value: agent
                 effect: NoSchedule
             containers:
-              - name: decode
+              - name: worker-block
                 image: registry:5001/nginx:alpine-slim
                 resources:
                   requests:
-                    memory: 30Mi
+                    memory: 80Mi
