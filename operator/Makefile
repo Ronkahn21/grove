@@ -87,12 +87,18 @@ cover-html: test-cover
 	@echo "Coverage report generated at coverage.html"
 
 # Run e2e tests
+# Usage: make test-e2e [TEST=<pattern>]
+# Examples:
+#   make test-e2e                    # Run all tests
+#   make test-e2e TEST=Test_GS       # Run all gang scheduling tests
+#   make test-e2e TEST=Test_GS1      # Run specific test
+#   make test-e2e TEST=Test_TOP      # Run all topology tests
 .PHONY: test-e2e
 test-e2e:
 	@echo "> Preparing charts (copying CRDs)..."
 	@$(MODULE_HACK_DIR)/prepare-charts.sh
 	@echo "> Running e2e tests..."
-	@cd e2e && go test -count=1 -tags=e2e ./tests/... -v -timeout 45m
+	@cd e2e && go test -count=1 -tags=e2e ./tests/... -v -timeout 45m $(if $(TEST),-run $(TEST))
 
 # Make targets for local development and testing
 # -------------------------------------------------------------

@@ -1,0 +1,79 @@
+apiVersion: grove.anthropic.com/v1alpha1
+kind: PodGangSet
+metadata:
+  name: top-disagg-inference
+  namespace: default
+spec:
+  replicas: 1
+  minAvailable: 1
+  template:
+    topologyConstraint:
+      packDomain: block
+    podCliqueScalingGroups:
+      - name: decoder
+        replicas: 2
+        minAvailable: 1
+        topologyConstraint:
+          packDomain: rack
+        cliqueNames:
+          - dworker
+          - dleader
+      - name: prefill
+        replicas: 2
+        minAvailable: 1
+        topologyConstraint:
+          packDomain: rack
+        cliqueNames:
+          - pworker
+          - pleader
+    cliques:
+      - name: dworker
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: worker
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never
+      - name: dleader
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: leader
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never
+      - name: pworker
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: worker
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never
+      - name: pleader
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: leader
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never
+      - name: router
+        spec:
+          replicas: 2
+          template:
+            spec:
+              containers:
+                - name: router
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never
