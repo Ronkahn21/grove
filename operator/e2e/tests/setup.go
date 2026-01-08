@@ -64,7 +64,7 @@ func init() {
 
 const (
 	// defaultPollTimeout is the timeout for most polling conditions
-	defaultPollTimeout = 4 * time.Minute
+	defaultPollTimeout = 1 * time.Minute
 	// defaultPollInterval is the interval for most polling conditions
 	defaultPollInterval = 5 * time.Second
 )
@@ -637,11 +637,7 @@ func scalePCSGAcrossAllReplicas(tc TestContext, pcsName, pcsgName string, pcsRep
 
 // convertUnstructuredToTyped converts an unstructured map to a typed object
 func convertUnstructuredToTyped(u map[string]interface{}, typed interface{}) error {
-	data, err := json.Marshal(u)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, typed)
+	return utils.ConvertUnstructuredToTyped(u, typed)
 }
 
 // convertTypedToUnstructured converts a typed object to an unstructured object
