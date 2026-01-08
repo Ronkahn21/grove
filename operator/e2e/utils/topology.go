@@ -25,7 +25,7 @@ var (
 	}
 
 	kaiTopologyGVR = schema.GroupVersionResource{
-		Group:    "kai-scheduler.volcengine.com",
+		Group:    "kai.scheduler",
 		Version:  "v1alpha1",
 		Resource: "topologies",
 	}

@@ -15,10 +15,10 @@ spec:
       - name: worker-rack
         labels:
           kai.scheduler/queue: test
+        topologyConstraint:
+          packDomain: rack  # Rack-level packing
         spec:
           roleName: worker-rack
-          topologyConstraint:
-            packDomain: rack  # Rack-level packing
           replicas: 3
           minAvailable: 3
           podSpec:
@@ -46,10 +46,10 @@ spec:
       - name: worker-block
         labels:
           kai.scheduler/queue: test
+        topologyConstraint:
+          packDomain: block  # Block-level packing (stricter)
         spec:
           roleName: worker-block
-          topologyConstraint:
-            packDomain: block  # Block-level packing (stricter)
           replicas: 4
           minAvailable: 4
           podSpec:
