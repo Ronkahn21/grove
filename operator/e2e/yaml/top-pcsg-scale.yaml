@@ -9,7 +9,6 @@ metadata:
     app: top-pcsg-scale
 spec:
   replicas: 1
-  minAvailable: 1
   template:
     topologyConstraint:
       packDomain: rack

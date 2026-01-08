@@ -1,11 +1,14 @@
-apiVersion: grove.anthropic.com/v1alpha1
-kind: PodGangSet
+# Workload: Disaggregated Inference - PCS with PCSG and multiple cliques
+# Test scenario: PCS (block) with 2 PCSGs (rack) containing disaggregated inference components
+---
+apiVersion: grove.io/v1alpha1
+kind: PodCliqueSet
 metadata:
   name: top-disagg-inference
-  namespace: default
+  labels:
+    app: top-disagg-inference
 spec:
   replicas: 1
-  minAvailable: 1
   template:
     topologyConstraint:
       packDomain: block
@@ -28,52 +31,147 @@ spec:
           - pleader
     cliques:
       - name: dworker
+        labels:
+          kai.scheduler/queue: test
         spec:
+          roleName: dworker
           replicas: 1
-          template:
-            spec:
-              containers:
-                - name: worker
-                  image: busybox
-                  command: ["sleep", "infinity"]
-              restartPolicy: Never
+          minAvailable: 1
+          podSpec:
+            schedulerName: kai-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node_role.e2e.grove.nvidia.com
+                          operator: In
+                          values:
+                            - agent
+            tolerations:
+              - key: node_role.e2e.grove.nvidia.com
+                operator: Equal
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: worker
+                image: registry:5001/nginx:alpine-slim
+                resources:
+                  requests:
+                    memory: 30Mi
       - name: dleader
+        labels:
+          kai.scheduler/queue: test
         spec:
+          roleName: dleader
           replicas: 1
-          template:
-            spec:
-              containers:
-                - name: leader
-                  image: busybox
-                  command: ["sleep", "infinity"]
-              restartPolicy: Never
+          minAvailable: 1
+          podSpec:
+            schedulerName: kai-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node_role.e2e.grove.nvidia.com
+                          operator: In
+                          values:
+                            - agent
+            tolerations:
+              - key: node_role.e2e.grove.nvidia.com
+                operator: Equal
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: leader
+                image: registry:5001/nginx:alpine-slim
+                resources:
+                  requests:
+                    memory: 30Mi
       - name: pworker
+        labels:
+          kai.scheduler/queue: test
         spec:
+          roleName: pworker
           replicas: 1
-          template:
-            spec:
-              containers:
-                - name: worker
-                  image: busybox
-                  command: ["sleep", "infinity"]
-              restartPolicy: Never
+          minAvailable: 1
+          podSpec:
+            schedulerName: kai-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node_role.e2e.grove.nvidia.com
+                          operator: In
+                          values:
+                            - agent
+            tolerations:
+              - key: node_role.e2e.grove.nvidia.com
+                operator: Equal
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: worker
+                image: registry:5001/nginx:alpine-slim
+                resources:
+                  requests:
+                    memory: 30Mi
       - name: pleader
+        labels:
+          kai.scheduler/queue: test
         spec:
+          roleName: pleader
           replicas: 1
-          template:
-            spec:
-              containers:
-                - name: leader
-                  image: busybox
-                  command: ["sleep", "infinity"]
-              restartPolicy: Never
+          minAvailable: 1
+          podSpec:
+            schedulerName: kai-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node_role.e2e.grove.nvidia.com
+                          operator: In
+                          values:
+                            - agent
+            tolerations:
+              - key: node_role.e2e.grove.nvidia.com
+                operator: Equal
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: leader
+                image: registry:5001/nginx:alpine-slim
+                resources:
+                  requests:
+                    memory: 30Mi
       - name: router
+        labels:
+          kai.scheduler/queue: test
         spec:
+          roleName: router
           replicas: 2
-          template:
-            spec:
-              containers:
-                - name: router
-                  image: busybox
-                  command: ["sleep", "infinity"]
-              restartPolicy: Never
+          minAvailable: 2
+          podSpec:
+            schedulerName: kai-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node_role.e2e.grove.nvidia.com
+                          operator: In
+                          values:
+                            - agent
+            tolerations:
+              - key: node_role.e2e.grove.nvidia.com
+                operator: Equal
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: router
+                image: registry:5001/nginx:alpine-slim
+                resources:
+                  requests:
+                    memory: 30Mi

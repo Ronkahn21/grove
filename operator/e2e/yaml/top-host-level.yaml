@@ -1,21 +1,44 @@
-apiVersion: grove.anthropic.com/v1alpha1
-kind: PodGangSet
+# Workload: Host-Level Packing - PCS with single clique at host level
+# Test scenario: PCS with single clique constrained to host level
+---
+apiVersion: grove.io/v1alpha1
+kind: PodCliqueSet
 metadata:
   name: top-host-level
-  namespace: default
+  labels:
+    app: top-host-level
 spec:
   replicas: 1
   template:
     cliques:
       - name: worker
+        labels:
+          kai.scheduler/queue: test
         topologyConstraint:
           packDomain: host
         spec:
+          roleName: worker
           replicas: 2
-          template:
-            spec:
-              containers:
-                - name: worker
-                  image: busybox
-                  command: ["sleep", "infinity"]
-              restartPolicy: Never
+          minAvailable: 2
+          podSpec:
+            schedulerName: kai-scheduler
+            affinity:
+              nodeAffinity:
+                requiredDuringSchedulingIgnoredDuringExecution:
+                  nodeSelectorTerms:
+                    - matchExpressions:
+                        - key: node_role.e2e.grove.nvidia.com
+                          operator: In
+                          values:
+                            - agent
+            tolerations:
+              - key: node_role.e2e.grove.nvidia.com
+                operator: Equal
+                value: agent
+                effect: NoSchedule
+            containers:
+              - name: worker
+                image: registry:5001/nginx:alpine-slim
+                resources:
+                  requests:
+                    memory: 30Mi
