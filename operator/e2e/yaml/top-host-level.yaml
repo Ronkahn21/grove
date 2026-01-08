@@ -1,0 +1,21 @@
+apiVersion: grove.anthropic.com/v1alpha1
+kind: PodGangSet
+metadata:
+  name: top-host-level
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    cliques:
+      - name: worker
+        topologyConstraint:
+          packDomain: host
+        spec:
+          replicas: 2
+          template:
+            spec:
+              containers:
+                - name: worker
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never

@@ -1,0 +1,36 @@
+apiVersion: grove.anthropic.com/v1alpha1
+kind: PodGangSet
+metadata:
+  name: top-sl-pcs-only
+  namespace: default
+spec:
+  replicas: 1
+  template:
+    topologyConstraint:
+      packDomain: rack
+    podCliqueScalingGroups:
+      - name: workers
+        replicas: 2
+        cliqueNames:
+          - worker
+    cliques:
+      - name: worker
+        spec:
+          replicas: 1
+          template:
+            spec:
+              containers:
+                - name: worker
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never
+      - name: router
+        spec:
+          replicas: 2
+          template:
+            spec:
+              containers:
+                - name: router
+                  image: busybox
+                  command: ["sleep", "infinity"]
+              restartPolicy: Never

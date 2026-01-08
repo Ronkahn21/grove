@@ -30,7 +30,7 @@ import (
 
 // Test_TI1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
 // Scenario TI-1 (Topology Infrastructure Setup):
-// 1. Verify ClusterTopology CR exists with correct 4-level hierarchy (zone, block, rack, host)
+// 1. Verify ClusterTopology CR exists with the correct 4-level hierarchy (zone, block, rack, host)
 // 2. Verify KAI Topology CR exists with matching levels
 // 3. Verify KAI Topology has owner reference to ClusterTopology
 // 4. Verify worker nodes have topology labels
@@ -497,4 +497,275 @@ func Test_TOP_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 	}
 
 	logger.Info("🎉 MR-1: Multi-Replica with Rack Constraint test completed successfully!")
+}
+
+// Test_TOP_SP4_DisaggregatedInferenceMultiplePCSGs tests disaggregated inference with multiple PCSGs
+// Scenario SP-4:
+// 1. Deploy workload with 2 PCSGs (decoder, prefill) + standalone router:
+//   - PCS: packDomain=block (all 12 pods in same block)
+//   - Decoder PCSG: replicas=2, packDomain=rack (each replica's 2 pods in same rack)
+//   - Prefill PCSG: replicas=2, packDomain=rack (each replica's 2 pods in same rack)
+//   - Router: standalone, 2 pods (no PCSG, no topology constraint)
+//
+// 2. Verify all 12 pods are scheduled successfully
+// 3. Verify block-level constraint covers all pods
+// 4. Verify each PCSG replica respects rack-level constraint independently
+// 5. Verify router pods have no PCSG replica index label
+func Test_TOP_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	defer cleanup()
+
+	expectedPods := 12 // decoder (2×2) + prefill (2×2) + router (2)
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "top-disagg-inference",
+			YAMLPath:     "../yaml/top-disagg-inference.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SP-4: disaggregated inference with multiple PCSGs)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify block-level constraint (all 12 pods in same block)")
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/block"); err != nil {
+		t.Fatalf("Failed to verify all pods in same block: %v", err)
+	}
+
+	logger.Info("4. Verify decoder PCSG replica-0 (2 pods in same rack)")
+	decoderReplica0 := filterPodsByLabel(
+		filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "decoder"),
+		"grove.io/podcliquescalinggroup-replica-index", "0")
+	if len(decoderReplica0) != 2 {
+		t.Fatalf("Expected 2 decoder replica-0 pods, got %d", len(decoderReplica0))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, decoderReplica0, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify decoder replica-0 pods in same rack: %v", err)
+	}
+
+	logger.Info("5. Verify decoder PCSG replica-1 (2 pods in same rack)")
+	decoderReplica1 := filterPodsByLabel(
+		filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "decoder"),
+		"grove.io/podcliquescalinggroup-replica-index", "1")
+	if len(decoderReplica1) != 2 {
+		t.Fatalf("Expected 2 decoder replica-1 pods, got %d", len(decoderReplica1))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, decoderReplica1, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify decoder replica-1 pods in same rack: %v", err)
+	}
+
+	logger.Info("6. Verify prefill PCSG replica-0 (2 pods in same rack)")
+	prefillReplica0 := filterPodsByLabel(
+		filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "prefill"),
+		"grove.io/podcliquescalinggroup-replica-index", "0")
+	if len(prefillReplica0) != 2 {
+		t.Fatalf("Expected 2 prefill replica-0 pods, got %d", len(prefillReplica0))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, prefillReplica0, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify prefill replica-0 pods in same rack: %v", err)
+	}
+
+	logger.Info("7. Verify prefill PCSG replica-1 (2 pods in same rack)")
+	prefillReplica1 := filterPodsByLabel(
+		filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "prefill"),
+		"grove.io/podcliquescalinggroup-replica-index", "1")
+	if len(prefillReplica1) != 2 {
+		t.Fatalf("Expected 2 prefill replica-1 pods, got %d", len(prefillReplica1))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, prefillReplica1, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify prefill replica-1 pods in same rack: %v", err)
+	}
+
+	logger.Info("8. Verify router pods (2 standalone, no PCSG label)")
+	routerPods := filterPodsByLabel(allPods, "grove.io/podclique", "top-disagg-inference-0-router")
+	if len(routerPods) != 2 {
+		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
+	}
+
+	logger.Info("9. Verify router pods don't have PCSG replica index label")
+	for _, pod := range routerPods {
+		if _, hasPCSGLabel := pod.Labels["grove.io/podcliquescalinggroup-replica-index"]; hasPCSGLabel {
+			t.Fatalf("Router pod %s should not have PCSG replica index label", pod.Name)
+		}
+	}
+
+	logger.Info("🎉 SP-4: Disaggregated Inference with Multiple PCSGs test completed successfully!")
+}
+
+// Test_TOP_SL1_PCSOnlyConstraint tests constraint only at PCS level with no PCSG/PCLQ constraints
+// Scenario SL-1:
+// 1. Deploy workload with constraint only at PCS level (packDomain: rack)
+// 2. PCSG and PCLQs have NO explicit constraints
+// 3. Verify all 4 pods (2 PCSG workers + 2 router) in same rack via inheritance
+func Test_TOP_SL1_PCSOnlyConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	defer cleanup()
+
+	expectedPods := 4 // 2 PCSG workers + 2 router standalone
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "top-sl-pcs-only",
+			YAMLPath:     "../yaml/top-sl-pcs-only.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SL-1: PCS-only constraint)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify all 4 pods in same rack (inherited from PCS)")
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify all pods in same rack: %v", err)
+	}
+
+	logger.Info("4. Verify PCSG worker pods (2 total, 1 per replica)")
+	workerPods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "workers")
+	if len(workerPods) != 2 {
+		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
+	}
+
+	logger.Info("5. Verify router pods (2 standalone)")
+	routerPods := filterPodsByLabel(allPods, "grove.io/podclique", "top-sl-pcs-only-0-router")
+	if len(routerPods) != 2 {
+		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
+	}
+
+	logger.Info("🎉 SL-1: PCS-Only Constraint test completed successfully!")
+}
+
+// Test_TOP_SL2_PCSGOnlyConstraint tests constraint only at PCSG level with no PCS/PCLQ constraints
+// Scenario SL-2:
+// 1. Deploy workload with constraint only at PCSG level (packDomain: rack)
+// 2. PCS and PCLQs have NO explicit constraints
+// 3. Verify PCSG worker pods (2 total) respect rack constraint
+// 4. Router pods (2 standalone) are unconstrained
+func Test_TOP_SL2_PCSGOnlyConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	defer cleanup()
+
+	expectedPods := 4 // 2 PCSG workers + 2 router standalone
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "top-sl-pcsg-only",
+			YAMLPath:     "../yaml/top-sl-pcsg-only.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SL-2: PCSG-only constraint)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify PCSG worker pods (2 total, 1 per replica) in same rack")
+	workerPods := filterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "workers")
+	if len(workerPods) != 2 {
+		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
+	}
+	if err := verifyPodsInSameTopologyDomain(tc, workerPods, "kubernetes.io/rack"); err != nil {
+		t.Fatalf("Failed to verify worker pods in same rack: %v", err)
+	}
+
+	logger.Info("4. Verify router pods (2 standalone, unconstrained)")
+	routerPods := filterPodsByLabel(allPods, "grove.io/podclique", "top-sl-pcsg-only-0-router")
+	if len(routerPods) != 2 {
+		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
+	}
+
+	logger.Info("🎉 SL-2: PCSG-Only Constraint test completed successfully!")
+}
+
+// Test_TOP_PC1_HostLevelConstraint tests PCLQ-only constraint with host-level packing
+// Scenario PC-1:
+// 1. Deploy workload with constraint only at PCLQ level (packDomain: host)
+// 2. PCS has NO explicit constraint
+// 3. Verify all 2 pods on same host (strictest constraint)
+func Test_TOP_PC1_HostLevelConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	defer cleanup()
+
+	expectedPods := 2
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "top-host-level",
+			YAMLPath:     "../yaml/top-host-level.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (PC-1: PCLQ-only host constraint)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify all pods on same host")
+	if err := verifyPodsInSameTopologyDomain(tc, allPods, "kubernetes.io/hostname"); err != nil {
+		t.Fatalf("Failed to verify pods on same host: %v", err)
+	}
+
+	// Additional check: verify both pods have same node name
+	if len(allPods) != 2 {
+		t.Fatalf("Expected 2 pods, got %d", len(allPods))
+	}
+	if allPods[0].Spec.NodeName != allPods[1].Spec.NodeName {
+		t.Fatalf("Pods not on same node: %s vs %s", allPods[0].Spec.NodeName, allPods[1].Spec.NodeName)
+	}
+
+	logger.Info("🎉 PC-1: Host-Level Constraint test completed successfully!")
 }
