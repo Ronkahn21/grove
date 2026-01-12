@@ -35,7 +35,7 @@ import (
 // 2. Verify KAI Topology CR exists with matching levels
 // 3. Verify KAI Topology has owner reference to ClusterTopology
 // 4. Verify worker nodes have topology labels
-func Test_TOP_TI1_TopologyInfrastructure(t *testing.T) {
+func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 	ctx := context.Background()
 
 	clientset, _, dynamicClient, cleanup := prepareTestCluster(ctx, t, 0)
@@ -111,7 +111,7 @@ func Test_TOP_TI1_TopologyInfrastructure(t *testing.T) {
 	logger.Info("🎉 Topology Infrastructure test completed successfully!")
 }
 
-// Test_TOP_BP1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
+// Test_TAS_BP1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
 // Scenario BP-1:
 // 1. Deploy workload with PCS (no constraint) containing 2 cliques:
 //   - worker-rack: packDomain=rack (3 pods)
@@ -121,7 +121,7 @@ func Test_TOP_TI1_TopologyInfrastructure(t *testing.T) {
 // 3. Verify worker-rack pods (3) are in the same rack
 // 4. Verify worker-block pods (4) are in the same block
 // 5. Verify different cliques can have independent topology constraints
-func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
+func Test_TAS_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 7-node Grove cluster for topology testing")
@@ -175,7 +175,7 @@ func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	logger.Info("🎉 BP-1: Multiple Cliques with Different Constraints test completed successfully!")
 }
 
-// Test_TOP_SP1_FullHierarchyWithCascadingConstraints tests complete PCS → PCSG → PCLQ hierarchy
+// Test_TAS_SP1_FullHierarchyWithCascadingConstraints tests complete PCS → PCSG → PCLQ hierarchy
 // Scenario SP-1:
 // 1. Deploy workload with full 3-level hierarchy:
 //   - PCS: packDomain=block
@@ -185,7 +185,7 @@ func Test_TOP_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 // 2. Verify all 8 pods are scheduled successfully
 // 3. Verify all pods are on the same host (strictest constraint wins)
 // 4. Verify constraint inheritance and override behavior
-func Test_TOP_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
+func Test_TAS_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize an 8-node Grove cluster for topology testing")
@@ -301,7 +301,7 @@ func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error
 	return podList.Items, nil
 }
 
-// Test_TOP_SP3_PCSGScalingWithTopologyConstraints tests PCSG scaling with topology constraints
+// Test_TAS_SP3_PCSGScalingWithTopologyConstraints tests PCSG scaling with topology constraints
 // Scenario SP-3:
 // 1. Deploy workload with PCSG scaling (3 replicas):
 //   - PCS: packDomain=rack, minAvailable=1
@@ -312,7 +312,7 @@ func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error
 // 3. Verify each PCSG replica's pods are in the same rack
 // 4. Verify PCSG scaling creates multiple TopologyConstraintGroups
 // 5. Verify topology constraints work with PCSG-level scaling
-func Test_TOP_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
+func Test_TAS_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
@@ -381,13 +381,13 @@ func Test_TOP_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
 	logger.Info("🎉 SP-3: PCSG Scaling with Topology Constraints test completed successfully!")
 }
 
-// Test_TOP_EC1_InsufficientNodesForConstraint tests gang scheduling failure when topology constraint cannot be satisfied
+// Test_TAS_EC1_InsufficientNodesForConstraint tests gang scheduling failure when topology constraint cannot be satisfied
 // Scenario EC-1:
 // 1. Deploy workload with rack constraint requesting 10 pods (exceeds rack capacity)
 // 2. Verify all 10 pods remain in Pending state (no partial scheduling)
 // 3. Verify NO pods are scheduled (all-or-nothing gang behavior)
 // 4. Verify pod events show Unschedulable reason
-func Test_TOP_EC1_InsufficientNodesForConstraint(t *testing.T) {
+func Test_TAS_EC1_InsufficientNodesForConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
@@ -441,14 +441,14 @@ func Test_TOP_EC1_InsufficientNodesForConstraint(t *testing.T) {
 	logger.Info("🎉 EC-1: Insufficient Nodes for Constraint test completed successfully!")
 }
 
-// Test_TOP_MR1_MultiReplicaWithRackConstraint tests multi-replica PCS with per-replica topology packing
+// Test_TAS_MR1_MultiReplicaWithRackConstraint tests multi-replica PCS with per-replica topology packing
 // Scenario MR-1:
 // 1. Deploy workload with 2 PCS replicas, each with rack constraint (2 pods per replica)
 // 2. Verify all 4 pods are scheduled successfully
 // 3. Verify PCS replica 0 pods (2) are in same rack (per-replica packing)
 // 4. Verify PCS replica 1 pods (2) are in same rack (per-replica packing)
 // Note: We do NOT verify replicas are in different racks (spread constraints not supported)
-func Test_TOP_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
+func Test_TAS_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
@@ -500,7 +500,7 @@ func Test_TOP_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 	logger.Info("🎉 MR-1: Multi-Replica with Rack Constraint test completed successfully!")
 }
 
-// Test_TOP_SP4_DisaggregatedInferenceMultiplePCSGs tests disaggregated inference with multiple PCSGs
+// Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs tests disaggregated inference with multiple PCSGs
 // Scenario SP-4:
 // 1. Deploy workload with 2 PCSGs (decoder, prefill) + standalone router:
 //   - PCS: packDomain=block (all 12 pods in same block)
@@ -512,7 +512,7 @@ func Test_TOP_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 // 3. Verify block-level constraint covers all pods
 // 4. Verify each PCSG replica respects rack-level constraint independently
 // 5. Verify router pods have no PCSG replica index label
-func Test_TOP_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
+func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
@@ -608,12 +608,12 @@ func Test_TOP_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 	logger.Info("🎉 SP-4: Disaggregated Inference with Multiple PCSGs test completed successfully!")
 }
 
-// Test_TOP_SL1_PCSOnlyConstraint tests constraint only at PCS level with no PCSG/PCLQ constraints
+// Test_TAS_SL1_PCSOnlyConstraint tests constraint only at PCS level with no PCSG/PCLQ constraints
 // Scenario SL-1:
 // 1. Deploy workload with constraint only at PCS level (packDomain: rack)
 // 2. PCSG and PCLQs have NO explicit constraints
 // 3. Verify all 4 pods (2 PCSG workers + 2 router) in same rack via inheritance
-func Test_TOP_SL1_PCSOnlyConstraint(t *testing.T) {
+func Test_TAS_SL1_PCSOnlyConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
@@ -664,13 +664,13 @@ func Test_TOP_SL1_PCSOnlyConstraint(t *testing.T) {
 	logger.Info("🎉 SL-1: PCS-Only Constraint test completed successfully!")
 }
 
-// Test_TOP_SL2_PCSGOnlyConstraint tests constraint only at PCSG level with no PCS/PCLQ constraints
+// Test_TAS_SL2_PCSGOnlyConstraint tests constraint only at PCSG level with no PCS/PCLQ constraints
 // Scenario SL-2:
 // 1. Deploy workload with constraint only at PCSG level (packDomain: rack)
 // 2. PCS and PCLQs have NO explicit constraints
 // 3. Verify PCSG worker pods (2 total) respect rack constraint
 // 4. Router pods (2 standalone) are unconstrained
-func Test_TOP_SL2_PCSGOnlyConstraint(t *testing.T) {
+func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
@@ -706,7 +706,7 @@ func Test_TOP_SL2_PCSGOnlyConstraint(t *testing.T) {
 	if len(workerPods) != 2 {
 		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
 	}
-	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset,workerPods, "kubernetes.io/rack", logger); err != nil {
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, workerPods, "kubernetes.io/rack", logger); err != nil {
 		t.Fatalf("Failed to verify worker pods in same rack: %v", err)
 	}
 
@@ -719,12 +719,12 @@ func Test_TOP_SL2_PCSGOnlyConstraint(t *testing.T) {
 	logger.Info("🎉 SL-2: PCSG-Only Constraint test completed successfully!")
 }
 
-// Test_TOP_PC1_HostLevelConstraint tests PCLQ-only constraint with host-level packing
+// Test_TAS_PC1_HostLevelConstraint tests PCLQ-only constraint with host-level packing
 // Scenario PC-1:
 // 1. Deploy workload with constraint only at PCLQ level (packDomain: host)
 // 2. PCS has NO explicit constraint
 // 3. Verify all 2 pods on same host (strictest constraint)
-func Test_TOP_PC1_HostLevelConstraint(t *testing.T) {
+func Test_TAS_PC1_HostLevelConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
