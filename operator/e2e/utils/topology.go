@@ -63,8 +63,8 @@ func VerifyClusterTopologyLevels(ctx context.Context, dynamicClient dynamic.Inte
 
 // VerifyKAITopologyLevels verifies that a KAI Topology CR exists with the expected levels
 func VerifyKAITopologyLevels(ctx context.Context, dynamicClient dynamic.Interface, name string, expectedKeys []string, logger *Logger) error {
-	// Get unstructured KAI Topology
-	unstructuredTopology, err := dynamicClient.Resource(kaiTopologyGVR).Namespace("kai-system").Get(ctx, name, metav1.GetOptions{})
+	// Get unstructured KAI Topology (cluster-scoped resource)
+	unstructuredTopology, err := dynamicClient.Resource(kaiTopologyGVR).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get KAI Topology %s: %w", name, err)
 	}
