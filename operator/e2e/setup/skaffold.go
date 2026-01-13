@@ -153,7 +153,10 @@ func runSkaffoldBuild(ctx context.Context, absSkaffoldPath, skaffoldDir, kubecon
 	cmd.Dir = skaffoldDir
 
 	// Set up environment variables
-	cmd.Env = os.Environ()
+	// To allow running the tests from the IDE
+	cmd.Env = filterEnv(os.Environ(), "GOOS", "GOARCH")
+	cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
+
 	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
 
 	// Add build-specific environment variables
@@ -314,4 +317,22 @@ func writeTemporaryKubeconfig(restConfig *rest.Config, logger *utils.Logger) (st
 
 	logger.Debugf("📄 Wrote temporary kubeconfig to: %s", tmpPath)
 	return tmpPath, cleanup, nil
+}
+
+// filterEnv filters out specified environment variables from the environment
+func filterEnv(env []string, keysToRemove ...string) []string {
+	filtered := make([]string, 0, len(env))
+	for _, e := range env {
+		keep := true
+		for _, key := range keysToRemove {
+			if strings.HasPrefix(e, key+"=") {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered
 }
