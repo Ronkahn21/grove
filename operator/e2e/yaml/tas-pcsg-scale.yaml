@@ -1,25 +1,33 @@
-# Workload 10: EC-1 - Insufficient Nodes for Constraint
-# Test scenario: PCS with rack constraint requesting more pods than can fit in any single rack
+# Workload 9: SP-3 - PCSG Scaling with Topology Constraints and MinAvailable
+# Test scenario: 3 PCSG replicas with rack constraint demonstrating scaling coordination
 ---
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: top-insuffic
+  name: tas-pcsg-scale
   labels:
-    app: top-insuffic
+    app: tas-pcsg-scale
 spec:
   replicas: 1
   template:
     topologyConstraint:
-      packDomain: rack  # All pods must be in same rack
+      packDomain: rack
+    podCliqueScalingGroups:
+      - name: inference-group
+        replicas: 3
+        minAvailable: 1
+        topologyConstraint:
+          packDomain: rack
+        cliqueNames:
+          - worker
     cliques:
       - name: worker
         labels:
           kai.scheduler/queue: test
         spec:
           roleName: worker
-          replicas: 10  # Exceeds capacity of any single rack
-          minAvailable: 10  # All-or-nothing gang scheduling
+          replicas: 2
+          minAvailable: 2
           podSpec:
             schedulerName: kai-scheduler
             affinity:
@@ -41,4 +49,4 @@ spec:
                 image: registry:5001/nginx:alpine-slim
                 resources:
                   requests:
-                    memory: 500Mi  # Large enough to prevent 10 pods fitting in 1 rack (2 nodes)
+                    memory: 80Mi

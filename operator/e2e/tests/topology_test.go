@@ -139,21 +139,21 @@ func Test_TAS_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-indep-clq",
-			YAMLPath:     "../yaml/top-indep-clq.yaml",
+			Name:         "tas-indep-clq",
+			YAMLPath:     "../yaml/tas-indep-clq.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
 	}
 
-	logger.Info("2. Deploy workload7 (BP-1: multiple cliques with different constraints)")
+	logger.Info("2. Deploy workload (BP-1: multiple cliques with different constraints)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
 	logger.Info("3. Verify worker-rack pods (3) are in the same rack")
-	rackPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-indep-clq-0-worker-rack")
+	rackPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-indep-clq-0-worker-rack")
 	if len(rackPods) != 3 {
 		t.Fatalf("Expected 3 worker-rack pods, got %d", len(rackPods))
 	}
@@ -163,7 +163,7 @@ func Test_TAS_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	}
 
 	logger.Info("4. Verify worker-block pods (4) are in the same block")
-	blockPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-indep-clq-0-worker-block")
+	blockPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-indep-clq-0-worker-block")
 	if len(blockPods) != 4 {
 		t.Fatalf("Expected 4 worker-block pods, got %d", len(blockPods))
 	}
@@ -203,21 +203,21 @@ func Test_TAS_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-hierarchy",
-			YAMLPath:     "../yaml/top-hierarchy.yaml",
+			Name:         "tas-hierarchy",
+			YAMLPath:     "../yaml/tas-hierarchy.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
 	}
 
-	logger.Info("2. Deploy workload8 (SP-1: full 3-level hierarchy with cascading constraints)")
+	logger.Info("2. Deploy workload (SP-1: full 3-level hierarchy with cascading constraints)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
 	logger.Info("3. Verify PCSG replica 0 prefill pods (2) are on same host (PCLQ constraint)")
-	prefill0Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-hierarchy-0-inference-group-0-prefill")
+	prefill0Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-hierarchy-0-inference-group-0-prefill")
 	if len(prefill0Pods) != 2 {
 		t.Fatalf("Expected 2 prefill-0 pods, got %d", len(prefill0Pods))
 	}
@@ -226,7 +226,7 @@ func Test_TAS_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	}
 
 	logger.Info("4. Verify PCSG replica 0 decode pods (2) are on same host (PCLQ constraint)")
-	decode0Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-hierarchy-0-inference-group-0-decode")
+	decode0Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-hierarchy-0-inference-group-0-decode")
 	if len(decode0Pods) != 2 {
 		t.Fatalf("Expected 2 decode-0 pods, got %d", len(decode0Pods))
 	}
@@ -235,7 +235,7 @@ func Test_TAS_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	}
 
 	logger.Info("5. Verify PCSG replica 1 prefill pods (2) are on same host (PCLQ constraint)")
-	prefill1Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-hierarchy-0-inference-group-1-prefill")
+	prefill1Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-hierarchy-0-inference-group-1-prefill")
 	if len(prefill1Pods) != 2 {
 		t.Fatalf("Expected 2 prefill-1 pods, got %d", len(prefill1Pods))
 	}
@@ -244,7 +244,7 @@ func Test_TAS_SP1_FullHierarchyWithCascadingConstraints(t *testing.T) {
 	}
 
 	logger.Info("6. Verify PCSG replica 1 decode pods (2) are on same host (PCLQ constraint)")
-	decode1Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-hierarchy-0-inference-group-1-decode")
+	decode1Pods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-hierarchy-0-inference-group-1-decode")
 	if len(decode1Pods) != 2 {
 		t.Fatalf("Expected 2 decode-1 pods, got %d", len(decode1Pods))
 	}
@@ -330,14 +330,14 @@ func Test_TAS_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-pcsg-scale",
-			YAMLPath:     "../yaml/top-pcsg-scale.yaml",
+			Name:         "tas-pcsg-scale",
+			YAMLPath:     "../yaml/tas-pcsg-scale.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
 	}
 
-	logger.Info("2. Deploy workload9 (SP-3: PCSG scaling with topology constraints)")
+	logger.Info("2. Deploy workload (SP-3: PCSG scaling with topology constraints)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
@@ -405,14 +405,14 @@ func Test_TAS_EC1_InsufficientNodesForConstraint(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-insuffic",
-			YAMLPath:     "../yaml/top-insuffic.yaml",
+			Name:         "tas-insuffic",
+			YAMLPath:     "../yaml/tas-insuffic.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
 	}
 
-	logger.Info("2. Deploy workload10 (EC-1: insufficient nodes for rack constraint)")
+	logger.Info("2. Deploy workload (EC-1: insufficient nodes for rack constraint)")
 	_, err := deployAndVerifyWorkload(tc)
 	if err != nil {
 		t.Fatalf("Failed to deploy workload: %v", err)
@@ -466,14 +466,14 @@ func Test_TAS_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-multirep",
-			YAMLPath:     "../yaml/top-multirep.yaml",
+			Name:         "tas-multirep",
+			YAMLPath:     "../yaml/tas-multirep.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
 	}
 
-	logger.Info("2. Deploy workload11 (MR-1: multi-replica with rack constraint)")
+	logger.Info("2. Deploy workload (MR-1: multi-replica with rack constraint)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
@@ -530,8 +530,8 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-disagg-inference",
-			YAMLPath:     "../yaml/top-disagg-inference.yaml",
+			Name:         "tas-disagg-inference",
+			YAMLPath:     "../yaml/tas-disagg-inference.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
@@ -550,7 +550,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("4. Verify decoder PCSG replica-0 (2 pods in same rack)")
 	decoderReplica0 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-decoder"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-disagg-inference-0-decoder"),
 		"grove.io/podcliquescalinggroup-replica-index", "0")
 	if len(decoderReplica0) != 2 {
 		t.Fatalf("Expected 2 decoder replica-0 pods, got %d", len(decoderReplica0))
@@ -561,7 +561,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("5. Verify decoder PCSG replica-1 (2 pods in same rack)")
 	decoderReplica1 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-decoder"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-disagg-inference-0-decoder"),
 		"grove.io/podcliquescalinggroup-replica-index", "1")
 	if len(decoderReplica1) != 2 {
 		t.Fatalf("Expected 2 decoder replica-1 pods, got %d", len(decoderReplica1))
@@ -572,7 +572,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("6. Verify prefill PCSG replica-0 (2 pods in same rack)")
 	prefillReplica0 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-prefill"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-disagg-inference-0-prefill"),
 		"grove.io/podcliquescalinggroup-replica-index", "0")
 	if len(prefillReplica0) != 2 {
 		t.Fatalf("Expected 2 prefill replica-0 pods, got %d", len(prefillReplica0))
@@ -583,7 +583,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("7. Verify prefill PCSG replica-1 (2 pods in same rack)")
 	prefillReplica1 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-prefill"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-disagg-inference-0-prefill"),
 		"grove.io/podcliquescalinggroup-replica-index", "1")
 	if len(prefillReplica1) != 2 {
 		t.Fatalf("Expected 2 prefill replica-1 pods, got %d", len(prefillReplica1))
@@ -593,7 +593,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 	}
 
 	logger.Info("8. Verify router pods (2 standalone, no PCSG label)")
-	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-disagg-inference-0-router")
+	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-disagg-inference-0-router")
 	if len(routerPods) != 2 {
 		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
 	}
@@ -624,8 +624,8 @@ func Test_TAS_SL1_PCSOnlyConstraint(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-sl-pcs-only",
-			YAMLPath:     "../yaml/top-sl-pcs-only.yaml",
+			Name:         "tas-sl-pcs-only",
+			YAMLPath:     "../yaml/tas-sl-pcs-only.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
@@ -643,13 +643,13 @@ func Test_TAS_SL1_PCSOnlyConstraint(t *testing.T) {
 	}
 
 	logger.Info("4. Verify PCSG worker pods (2 total, 1 per replica)")
-	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-sl-pcs-only-0-workers")
+	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-sl-pcs-only-0-workers")
 	if len(workerPods) != 2 {
 		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
 	}
 
 	logger.Info("5. Verify router pods (2 standalone)")
-	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-sl-pcs-only-0-router")
+	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-sl-pcs-only-0-router")
 	if len(routerPods) != 2 {
 		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
 	}
@@ -681,8 +681,8 @@ func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-sl-pcsg-only",
-			YAMLPath:     "../yaml/top-sl-pcsg-only.yaml",
+			Name:         "tas-sl-pcsg-only",
+			YAMLPath:     "../yaml/tas-sl-pcsg-only.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
@@ -695,7 +695,7 @@ func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 	}
 
 	logger.Info("3. Verify PCSG worker pods (2 total, 1 per replica) in same rack")
-	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-sl-pcsg-only-0-workers")
+	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-sl-pcsg-only-0-workers")
 	if len(workerPods) != 2 {
 		t.Fatalf("Expected 2 worker pod, got %d", len(workerPods))
 	}
@@ -704,7 +704,7 @@ func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 	}
 
 	logger.Info("4. Verify router pods (2 standalone, unconstrained)")
-	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "top-sl-pcsg-only-0-router")
+	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-sl-pcsg-only-0-router")
 	if len(routerPods) != 2 {
 		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
 	}
@@ -735,8 +735,8 @@ func Test_TAS_PC1_HostLevelConstraint(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "top-host-level",
-			YAMLPath:     "../yaml/top-host-level.yaml",
+			Name:         "tas-host-level",
+			YAMLPath:     "../yaml/tas-host-level.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
