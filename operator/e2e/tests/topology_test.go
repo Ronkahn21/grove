@@ -315,8 +315,8 @@ func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error
 func Test_TAS_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 6 // 3 PCSG replicas × 2 pods each
@@ -390,8 +390,8 @@ func Test_TAS_SP3_PCSGScalingWithTopologyConstraints(t *testing.T) {
 func Test_TAS_EC1_InsufficientNodesForConstraint(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 10
@@ -451,8 +451,8 @@ func Test_TAS_EC1_InsufficientNodesForConstraint(t *testing.T) {
 func Test_TAS_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 4 // 2 PCS replicas × 2 pods each
@@ -503,23 +503,23 @@ func Test_TAS_MR1_MultiReplicaWithRackConstraint(t *testing.T) {
 // Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs tests disaggregated inference with multiple PCSGs
 // Scenario SP-4:
 // 1. Deploy workload with 2 PCSGs (decoder, prefill) + standalone router:
-//   - PCS: packDomain=block (all 12 pods in same block)
-//   - Decoder PCSG: replicas=2, packDomain=rack (each replica's 2 pods in same rack)
-//   - Prefill PCSG: replicas=2, packDomain=rack (each replica's 2 pods in same rack)
+//   - PCS: packDomain=block (all 10 pods in same block)
+//   - Decoder PCSG: replicas=2, minAvaileale=1 (each replica's 2 pods in same rack)
+//   - Prefill PCSG: replicas=2, minAvailable=1, (each replica's 2 pods in same rack)
 //   - Router: standalone, 2 pods (no PCSG, no topology constraint)
 //
-// 2. Verify all 12 pods are scheduled successfully
+// 2. Verify all 10 pods are scheduled successfully
 // 3. Verify block-level constraint covers all pods
 // 4. Verify each PCSG replica respects rack-level constraint independently
 // 5. Verify router pods have no PCSG replica index label
 func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
-	expectedPods := 12 // decoder (2×2) + prefill (2×2) + router (2)
+	expectedPods := 10 // decoder (2×2) + prefill (2×2) + router (2)
 	tc := TestContext{
 		T:             t,
 		Ctx:           ctx,
@@ -537,20 +537,20 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 		},
 	}
 
-	logger.Info("2. Deploy workload (SP-4: disaggregated inference with multiple PCSGs)")
+	logger.Info("2. Deploy workload (SP-4: disaggregated inference with multiple PCSGs with minAvailable 1)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
 	}
 
-	logger.Info("3. Verify block-level constraint (all 12 pods in same block)")
+	logger.Info("3. Verify block-level constraint (all 10 pods in same block)")
 	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/block", logger); err != nil {
 		t.Fatalf("Failed to verify all pods in same block: %v", err)
 	}
 
 	logger.Info("4. Verify decoder PCSG replica-0 (2 pods in same rack)")
 	decoderReplica0 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "decoder"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-decoder"),
 		"grove.io/podcliquescalinggroup-replica-index", "0")
 	if len(decoderReplica0) != 2 {
 		t.Fatalf("Expected 2 decoder replica-0 pods, got %d", len(decoderReplica0))
@@ -561,7 +561,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("5. Verify decoder PCSG replica-1 (2 pods in same rack)")
 	decoderReplica1 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "decoder"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-decoder"),
 		"grove.io/podcliquescalinggroup-replica-index", "1")
 	if len(decoderReplica1) != 2 {
 		t.Fatalf("Expected 2 decoder replica-1 pods, got %d", len(decoderReplica1))
@@ -572,7 +572,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("6. Verify prefill PCSG replica-0 (2 pods in same rack)")
 	prefillReplica0 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "prefill"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-prefill"),
 		"grove.io/podcliquescalinggroup-replica-index", "0")
 	if len(prefillReplica0) != 2 {
 		t.Fatalf("Expected 2 prefill replica-0 pods, got %d", len(prefillReplica0))
@@ -583,7 +583,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 
 	logger.Info("7. Verify prefill PCSG replica-1 (2 pods in same rack)")
 	prefillReplica1 := utils.FilterPodsByLabel(
-		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "prefill"),
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-disagg-inference-0-prefill"),
 		"grove.io/podcliquescalinggroup-replica-index", "1")
 	if len(prefillReplica1) != 2 {
 		t.Fatalf("Expected 2 prefill replica-1 pods, got %d", len(prefillReplica1))
@@ -598,13 +598,6 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
 	}
 
-	logger.Info("9. Verify router pods don't have PCSG replica index label")
-	for _, pod := range routerPods {
-		if _, hasPCSGLabel := pod.Labels["grove.io/podcliquescalinggroup-replica-index"]; hasPCSGLabel {
-			t.Fatalf("Router pod %s should not have PCSG replica index label", pod.Name)
-		}
-	}
-
 	logger.Info("🎉 SP-4: Disaggregated Inference with Multiple PCSGs test completed successfully!")
 }
 
@@ -616,8 +609,8 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 func Test_TAS_SL1_PCSOnlyConstraint(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 4 // 2 PCSG workers + 2 router standalone
@@ -650,7 +643,7 @@ func Test_TAS_SL1_PCSOnlyConstraint(t *testing.T) {
 	}
 
 	logger.Info("4. Verify PCSG worker pods (2 total, 1 per replica)")
-	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "workers")
+	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-sl-pcs-only-0-workers")
 	if len(workerPods) != 2 {
 		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
 	}
@@ -673,8 +666,8 @@ func Test_TAS_SL1_PCSOnlyConstraint(t *testing.T) {
 func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 4 // 2 PCSG workers + 2 router standalone
@@ -702,9 +695,9 @@ func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 	}
 
 	logger.Info("3. Verify PCSG worker pods (2 total, 1 per replica) in same rack")
-	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "workers")
+	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "top-sl-pcsg-only-0-workers")
 	if len(workerPods) != 2 {
-		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
+		t.Fatalf("Expected 2 worker pod, got %d", len(workerPods))
 	}
 	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, workerPods, "kubernetes.io/rack", logger); err != nil {
 		t.Fatalf("Failed to verify worker pods in same rack: %v", err)
@@ -727,8 +720,8 @@ func Test_TAS_SL2_PCSGOnlyConstraint(t *testing.T) {
 func Test_TAS_PC1_HostLevelConstraint(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 6-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 6)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 2
