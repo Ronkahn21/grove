@@ -4,9 +4,9 @@
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: top-sl-pcs-only
+  name: tas-sl-pcs-only
   labels:
-    app: top-sl-pcs-only
+    app: tas-sl-pcs-only
 spec:
   replicas: 1
   template:

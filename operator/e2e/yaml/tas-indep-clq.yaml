@@ -4,9 +4,9 @@
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: top-indep-clq
+  name: tas-indep-clq
   labels:
-    app: top-indep-clq
+    app: tas-indep-clq
 spec:
   replicas: 1
   template:

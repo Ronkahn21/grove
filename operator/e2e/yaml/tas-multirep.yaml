@@ -4,9 +4,9 @@
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: top-multirep
+  name: tas-multirep
   labels:
-    app: top-multirep
+    app: tas-multirep
 spec:
   replicas: 2  # Creates 2 separate PodGangs (one per replica)
   template:

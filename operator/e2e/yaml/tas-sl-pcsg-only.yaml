@@ -1,36 +1,31 @@
-# Workload 8: SP-1 - Full 3-Level Hierarchy with Cascading Constraints
-# Test scenario: PCS (block) → PCSG (rack) → PCLQ (host) - demonstrating constraint inheritance
+# Workload: PCSG-Only Topology - PCSG with rack constraint
+# Test scenario: PCS without constraint, PCSG with rack constraint, standalone clique
 ---
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: top-hierarchy
+  name: tas-sl-pcsg-only
   labels:
-    app: top-hierarchy
+    app: tas-sl-pcsg-only
 spec:
   replicas: 1
   template:
-    topologyConstraint:
-      packDomain: block  # PCS level - broadest
     podCliqueScalingGroups:
-      - name: inference-group
+      - name: workers
         replicas: 2
         minAvailable: 2
         topologyConstraint:
-          packDomain: rack  # PCSG level - stricter than parent
+          packDomain: rack
         cliqueNames:
-          - prefill
-          - decode
+          - worker
     cliques:
-      - name: prefill
+      - name: worker
         labels:
           kai.scheduler/queue: test
-        topologyConstraint:
-          packDomain: host  # PCLQ level - strictest
         spec:
-          roleName: prefill
-          replicas: 2
-          minAvailable: 2
+          roleName: worker
+          replicas: 1
+          minAvailable: 1
           podSpec:
             schedulerName: kai-scheduler
             affinity:
@@ -48,18 +43,16 @@ spec:
                 value: agent
                 effect: NoSchedule
             containers:
-              - name: prefill
+              - name: worker
                 image: registry:5001/nginx:alpine-slim
                 resources:
                   requests:
                     memory: 30Mi
-      - name: decode
+      - name: router
         labels:
           kai.scheduler/queue: test
-        topologyConstraint:
-          packDomain: host  # PCLQ level - strictest
         spec:
-          roleName: decode
+          roleName: router
           replicas: 2
           minAvailable: 2
           podSpec:
@@ -79,7 +72,7 @@ spec:
                 value: agent
                 effect: NoSchedule
             containers:
-              - name: decode
+              - name: router
                 image: registry:5001/nginx:alpine-slim
                 resources:
                   requests:
