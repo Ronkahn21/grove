@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/ai-dynamo/grove/operator/e2e/utils"
+	"github.com/samber/lo"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
@@ -321,18 +322,11 @@ func writeTemporaryKubeconfig(restConfig *rest.Config, logger *utils.Logger) (st
 
 // filterEnv filters out specified environment variables from the environment
 func filterEnv(env []string, keysToRemove ...string) []string {
-	filtered := make([]string, 0, len(env))
-	for _, e := range env {
-		keep := true
-		for _, key := range keysToRemove {
-			if strings.HasPrefix(e, key+"=") {
-				keep = false
-				break
-			}
-		}
-		if keep {
-			filtered = append(filtered, e)
-		}
-	}
+	filtered := lo.Filter(env, func(e string, _ int) bool {
+		_, found := lo.Find(keysToRemove, func(key string) bool {
+			return strings.HasPrefix(e, key+"=")
+		})
+		return !found
+	})
 	return filtered
 }
