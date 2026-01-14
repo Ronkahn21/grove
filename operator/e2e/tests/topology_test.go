@@ -1100,3 +1100,589 @@ func Test_TAS_PC1_HostLevelConstraint(t *testing.T) {
 
 	logger.Info("🎉 PC-1: Host-Level Constraint test completed successfully!")
 }
+
+// Test_TAS_SP2_PCSPlusPCLQConstraint tests PCS with block constraint and standalone PCLQ with host constraint
+// Scenario SP-2:
+// 1. Deploy workload with PCS block constraint and PCLQ host constraint (no PCSG layer)
+// 2. Verify 2 pods on same host (PCLQ constraint, strictest)
+// 3. Verify both pods in same block (PCS constraint inherited)
+// 4. Verify KAI PodGroup has block constraint at top level, 1 SubGroup with host constraint
+func Test_TAS_SP2_PCSPlusPCLQConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 2
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-pcs-pclq",
+			YAMLPath:     "../yaml/tas-pcs-pclq.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SP-2: PCS block + PCLQ host constraint)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify 2 pods on same host (PCLQ host constraint)")
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/hostname", logger); err != nil {
+		t.Fatalf("Failed to verify pods on same host: %v", err)
+	}
+
+	logger.Info("4. Verify both pods in same block (PCS block constraint)")
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/block", logger); err != nil {
+		t.Fatalf("Failed to verify pods in same block: %v", err)
+	}
+
+	logger.Info("5. Verify KAI PodGroup has correct SubGroups (PCS block + PCLQ host)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-pcs-pclq", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-pcs-pclq-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-pcs-pclq-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (PCS level: block)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "kubernetes.io/block", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (1 standalone PCLQ with host constraint)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		{Name: "tas-pcs-pclq-0-worker", MinMember: 2, Parent: nil, RequiredTopologyLevel: "kubernetes.io/hostname"},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 SP-2: PCS+PCLQ Constraint test completed successfully!")
+}
+
+// Test_TAS_SP5_PCSGPlusPCLQNoParentConstraint tests PCSG with rack constraint and PCLQ with host constraint, no PCS constraint
+// Scenario SP-5:
+// 1. Deploy workload with no PCS constraint, PCSG rack constraint, PCLQ host constraint
+// 2. PCSG has replicas=2, minAvailable=2 (both in base PodGang)
+// 3. Verify each PCSG replica's 2 pods on same host (PCLQ constraint)
+// 4. Verify PCSG replicas respect rack constraint
+// 5. Verify KAI PodGroup has 4 SubGroups (2 PCSG parents + 2 PCLQ children)
+func Test_TAS_SP5_PCSGPlusPCLQNoParentConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 4 // 2 PCSG replicas × 2 pods each
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-pcsg-pclq",
+			YAMLPath:     "../yaml/tas-pcsg-pclq.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SP-5: PCSG rack + PCLQ host, no PCS constraint)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify each PCSG replica's pods on same host")
+	// Get pods for each PCSG replica
+	replica0Pods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroupreplica", "tas-pcsg-pclq-0-workers-0")
+	if len(replica0Pods) != 2 {
+		t.Fatalf("Expected 2 pods for replica 0, got %d", len(replica0Pods))
+	}
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, replica0Pods, "kubernetes.io/hostname", logger); err != nil {
+		t.Fatalf("Failed to verify replica 0 pods on same host: %v", err)
+	}
+
+	replica1Pods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroupreplica", "tas-pcsg-pclq-0-workers-1")
+	if len(replica1Pods) != 2 {
+		t.Fatalf("Expected 2 pods for replica 1, got %d", len(replica1Pods))
+	}
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, replica1Pods, "kubernetes.io/hostname", logger); err != nil {
+		t.Fatalf("Failed to verify replica 1 pods on same host: %v", err)
+	}
+
+	logger.Info("4. Verify KAI PodGroup has correct SubGroups (PCSG rack + PCLQ host)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-pcsg-pclq", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-pcsg-pclq-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-pcsg-pclq-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (no PCS constraint)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (2 PCSG parents with rack + 2 PCLQ children with host)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		// PCSG replicas (parent groups with rack constraint)
+		{Name: "tas-pcsg-pclq-0-workers-0", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		{Name: "tas-pcsg-pclq-0-workers-1", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		// Worker PCLQs (children with host constraint)
+		{Name: "tas-pcsg-pclq-0-workers-0-worker", MinMember: 2, Parent: ptr.To("tas-pcsg-pclq-0-workers-0"), RequiredTopologyLevel: "kubernetes.io/hostname"},
+		{Name: "tas-pcsg-pclq-0-workers-1-worker", MinMember: 2, Parent: ptr.To("tas-pcsg-pclq-0-workers-1"), RequiredTopologyLevel: "kubernetes.io/hostname"},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 SP-5: PCSG+PCLQ Constraint test completed successfully!")
+}
+
+// Test_TAS_ZL1_ZoneLevelConstraint tests zone-level constraint (widest topology domain)
+// Scenario ZL-1:
+// 1. Deploy workload with PCS zone constraint (widest domain)
+// 2. Verify all 4 pods in same zone
+// 3. Verify KAI PodGroup has zone constraint at top level, 1 SubGroup with NO constraint
+func Test_TAS_ZL1_ZoneLevelConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 4
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-zone-level",
+			YAMLPath:     "../yaml/tas-zone-level.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (ZL-1: PCS zone constraint)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify all 4 pods in same zone (PCS zone constraint)")
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/zone", logger); err != nil {
+		t.Fatalf("Failed to verify pods in same zone: %v", err)
+	}
+
+	logger.Info("4. Verify KAI PodGroup has correct SubGroups (zone at PCS level)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-zone-level", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-zone-level-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-zone-level-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (PCS level: zone)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "kubernetes.io/zone", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (1 standalone PCLQ with NO constraint - zone is at PCS level)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		{Name: "tas-zone-level-0-worker", MinMember: 4, Parent: nil},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 ZL-1: Zone-Level Constraint test completed successfully!")
+}
+
+// Test_TAS_SL3_NoTopologyConstraint tests gang scheduling without any topology constraints
+// Scenario SL-3:
+// 1. Deploy workload with no constraints at PCS, PCSG, or PCLQ levels
+// 2. Verify all 4 pods scheduled (gang scheduling works)
+// 3. Verify KAI PodGroup has 4 SubGroups with NO topology constraints
+func Test_TAS_SL3_NoTopologyConstraint(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 4 // 2 PCSG replicas × 2 pods each
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-no-constraint",
+			YAMLPath:     "../yaml/tas-no-constraint.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SL-3: No topology constraints)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify all 4 pods scheduled (gang scheduling works without constraints)")
+	if len(allPods) != 4 {
+		t.Fatalf("Expected 4 pods, got %d", len(allPods))
+	}
+	for _, pod := range allPods {
+		if pod.Status.Phase != v1.PodRunning {
+			t.Fatalf("Pod %s not running: %s", pod.Name, pod.Status.Phase)
+		}
+	}
+
+	logger.Info("4. Verify KAI PodGroup has correct SubGroups (no constraints)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-no-constraint", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-no-constraint-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-no-constraint-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (no PCS constraint)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (2 PCSG parents + 2 PCLQ children, all with NO constraints)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		// PCSG replicas (parent groups, no constraint)
+		{Name: "tas-no-constraint-0-workers-0", MinMember: 0, Parent: nil},
+		{Name: "tas-no-constraint-0-workers-1", MinMember: 0, Parent: nil},
+		// Worker PCLQs (children, no constraint)
+		{Name: "tas-no-constraint-0-workers-0-worker", MinMember: 2, Parent: ptr.To("tas-no-constraint-0-workers-0")},
+		{Name: "tas-no-constraint-0-workers-1-worker", MinMember: 2, Parent: ptr.To("tas-no-constraint-0-workers-1")},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 SL-3: No Topology Constraint test completed successfully!")
+}
+
+// Test_TAS_SP7_MultiCliqueWithDifferentConstraints tests PCSG with multiple cliques having different topology constraints
+// Scenario SP-7:
+// 1. Deploy workload with PCSG block constraint, worker PCLQ host constraint, router PCLQ rack constraint
+// 2. Verify worker pods (2) on same host
+// 3. Verify router pods (2) on same rack
+// 4. Verify all pods in same block (PCSG constraint)
+// 5. Verify KAI PodGroup has 3 SubGroups (1 PCSG parent + 2 children with different constraints)
+func Test_TAS_SP7_MultiCliqueWithDifferentConstraints(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 4 // 2 worker + 2 router
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-multi-clique",
+			YAMLPath:     "../yaml/tas-multi-clique.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SP-7: Multi-clique with different constraints)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify worker pods (2) on same host")
+	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-multi-clique-0-inference-group-0-worker")
+	if len(workerPods) != 2 {
+		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
+	}
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, workerPods, "kubernetes.io/hostname", logger); err != nil {
+		t.Fatalf("Failed to verify worker pods on same host: %v", err)
+	}
+
+	logger.Info("4. Verify router pods (2) on same rack")
+	routerPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-multi-clique-0-inference-group-0-router")
+	if len(routerPods) != 2 {
+		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
+	}
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, routerPods, "kubernetes.io/rack", logger); err != nil {
+		t.Fatalf("Failed to verify router pods on same rack: %v", err)
+	}
+
+	logger.Info("5. Verify all pods in same block (PCSG block constraint)")
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/block", logger); err != nil {
+		t.Fatalf("Failed to verify all pods in same block: %v", err)
+	}
+
+	logger.Info("6. Verify KAI PodGroup has correct SubGroups (multi-clique)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-multi-clique", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-multi-clique-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-multi-clique-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (no PCS constraint)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (1 PCSG parent with block + 2 children with different constraints)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		// PCSG replica (parent group with block constraint)
+		{Name: "tas-multi-clique-0-inference-group-0", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/block"},
+		// Worker PCLQ (child with host constraint)
+		{Name: "tas-multi-clique-0-inference-group-0-worker", MinMember: 2, Parent: ptr.To("tas-multi-clique-0-inference-group-0"), RequiredTopologyLevel: "kubernetes.io/hostname"},
+		// Router PCLQ (child with rack constraint)
+		{Name: "tas-multi-clique-0-inference-group-0-router", MinMember: 2, Parent: ptr.To("tas-multi-clique-0-inference-group-0"), RequiredTopologyLevel: "kubernetes.io/rack"},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 SP-7: Multi-Clique with Different Constraints test completed successfully!")
+}
+
+// Test_TAS_SP8_LargeScalingRatio tests large PCSG replica count for scalability
+// Scenario SP-8:
+// 1. Deploy workload with PCS rack constraint, PCSG block constraint, replicas=10/minAvailable=3
+// 2. Only verify base PodGang (3 PCSG replicas)
+// 3. Verify each replica's 2 pods on same host (PCLQ host constraint)
+// 4. Verify all 6 pods in same rack (PCS rack constraint)
+// 5. Verify KAI PodGroup has 6 SubGroups (3 PCSG parents + 3 worker children)
+func Test_TAS_SP8_LargeScalingRatio(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 6 // Only minAvailable=3 PCSG replicas × 2 pods each
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-large-scale",
+			YAMLPath:     "../yaml/tas-large-scale.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SP-8: Large scaling ratio, replicas=10/minAvailable=3)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify each PCSG replica's pods on same host")
+	// Get pods for each PCSG replica (only minAvailable=3)
+	for i := 0; i < 3; i++ {
+		replicaLabel := fmt.Sprintf("tas-large-scale-0-workers-%d", i)
+		replicaPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroupreplica", replicaLabel)
+		if len(replicaPods) != 2 {
+			t.Fatalf("Expected 2 pods for replica %d, got %d", i, len(replicaPods))
+		}
+		if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, replicaPods, "kubernetes.io/hostname", logger); err != nil {
+			t.Fatalf("Failed to verify replica %d pods on same host: %v", i, err)
+		}
+	}
+
+	logger.Info("4. Verify all 6 pods in same rack (PCS rack constraint)")
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/rack", logger); err != nil {
+		t.Fatalf("Failed to verify all pods in same rack: %v", err)
+	}
+
+	logger.Info("5. Verify KAI PodGroup has correct SubGroups (large scale)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-large-scale", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-large-scale-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-large-scale-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (PCS level: rack)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "kubernetes.io/rack", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (3 PCSG parents with block + 3 worker children with host)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		// PCSG replicas (parent groups with block constraint)
+		{Name: "tas-large-scale-0-workers-0", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/block"},
+		{Name: "tas-large-scale-0-workers-1", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/block"},
+		{Name: "tas-large-scale-0-workers-2", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/block"},
+		// Worker PCLQs (children with host constraint)
+		{Name: "tas-large-scale-0-workers-0-worker", MinMember: 2, Parent: ptr.To("tas-large-scale-0-workers-0"), RequiredTopologyLevel: "kubernetes.io/hostname"},
+		{Name: "tas-large-scale-0-workers-1-worker", MinMember: 2, Parent: ptr.To("tas-large-scale-0-workers-1"), RequiredTopologyLevel: "kubernetes.io/hostname"},
+		{Name: "tas-large-scale-0-workers-2-worker", MinMember: 2, Parent: ptr.To("tas-large-scale-0-workers-2"), RequiredTopologyLevel: "kubernetes.io/hostname"},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 SP-8: Large Scaling Ratio test completed successfully!")
+}
+
+// Test_TAS_EC2_InsufficientTopologyDomains tests error handling when not enough topology domains available
+// Scenario EC-2:
+// 1. Deploy workload with PCSG rack constraint, replicas=5 (need 5 racks but only have 2)
+// 2. Verify all 5 pods remain in Pending state (gang scheduling prevents partial scheduling)
+// 3. Verify KAI PodGroup exists with correct SubGroups structure (even though pods are pending)
+func Test_TAS_EC2_InsufficientTopologyDomains(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster (2 racks only)")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 5 // 5 PCSG replicas × 1 pod each
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-insufficient-domains",
+			YAMLPath:     "../yaml/tas-insufficient-domains.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (EC-2: Need 5 racks but only have 2)")
+	_, err := deployAndVerifyWorkload(tc)
+	if err != nil {
+		t.Fatalf("Failed to deploy workload: %v", err)
+	}
+
+	logger.Info("3. Verify all 5 pods remain in Pending state (no partial scheduling)")
+	if err := verifyPodsArePendingWithUnschedulableEvents(tc, true, expectedPods); err != nil {
+		t.Fatalf("Failed to verify pods are pending with unschedulable events: %v", err)
+	}
+
+	logger.Info("4. Verify NO pods are scheduled (all-or-nothing gang behavior)")
+	pods, err := listPods(tc)
+	if err != nil {
+		t.Fatalf("Failed to list pods: %v", err)
+	}
+
+	for _, pod := range pods.Items {
+		if pod.Status.Phase != v1.PodPending {
+			t.Fatalf("Expected all pods to be Pending, but pod %s is in phase %s", pod.Name, pod.Status.Phase)
+		}
+		if pod.Spec.NodeName != "" {
+			t.Fatalf("Expected pod %s to have no node assignment, but assigned to %s", pod.Name, pod.Spec.NodeName)
+		}
+	}
+
+	logger.Info("5. Verify KAI PodGroup exists with correct SubGroups (even though pods are pending)")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-insufficient-domains", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-insufficient-domains-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-insufficient-domains-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint (no PCS constraint)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (5 PCSG parents with rack constraint + 5 worker children without constraint)
+	// All 5 replicas are in base PodGang because minAvailable=5
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		// PCSG replicas (parent groups with rack constraint)
+		{Name: "tas-insufficient-domains-0-workers-0", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		{Name: "tas-insufficient-domains-0-workers-1", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		{Name: "tas-insufficient-domains-0-workers-2", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		{Name: "tas-insufficient-domains-0-workers-3", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		{Name: "tas-insufficient-domains-0-workers-4", MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+		// Worker PCLQs (children without constraint)
+		{Name: "tas-insufficient-domains-0-workers-0-worker", MinMember: 1, Parent: ptr.To("tas-insufficient-domains-0-workers-0")},
+		{Name: "tas-insufficient-domains-0-workers-1-worker", MinMember: 1, Parent: ptr.To("tas-insufficient-domains-0-workers-1")},
+		{Name: "tas-insufficient-domains-0-workers-2-worker", MinMember: 1, Parent: ptr.To("tas-insufficient-domains-0-workers-2")},
+		{Name: "tas-insufficient-domains-0-workers-3-worker", MinMember: 1, Parent: ptr.To("tas-insufficient-domains-0-workers-3")},
+		{Name: "tas-insufficient-domains-0-workers-4-worker", MinMember: 1, Parent: ptr.To("tas-insufficient-domains-0-workers-4")},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 EC-2: Insufficient Topology Domains test completed successfully!")
+}
