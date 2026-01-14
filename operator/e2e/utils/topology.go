@@ -45,6 +45,12 @@ var (
 		Version:  "v1alpha1",
 		Resource: "topologies",
 	}
+
+	kaiPodGroupGVR = schema.GroupVersionResource{
+		Group:    "scheduling.run.ai",
+		Version:  "v2alpha2",
+		Resource: "podgroups",
+	}
 )
 
 // VerifyClusterTopologyLevels verifies that a ClusterTopology CR exists with the expected topology levels
