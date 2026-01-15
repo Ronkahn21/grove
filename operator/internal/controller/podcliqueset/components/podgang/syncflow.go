@@ -224,7 +224,7 @@ func buildPCSGPackConstraintsAndPCLQsForBasePodGang(sc *syncContext, pcsReplica 
 	for _, pcsgConfig := range sc.pcs.Spec.Template.PodCliqueScalingGroupConfigs {
 		// Iterate through replicas of the PCSG that belong to the base PodGang [0, minAvailable-1]
 		minAvailable := int(*pcsgConfig.MinAvailable)
-		pcsgPodCliqueInfos, pcsgTopologyConstraints, err := doBuildBasePodGangPCLQsAndPCSGPackConstraints(sc, pcsReplica, pcsgConfig, minAvailable)
+		pcsgTopologyConstraints, pcsgPodCliqueInfos, err := doBuildPCSGGroupPackConstraintsAndPCLQs(sc, pcsReplica, pcsgConfig, 0, minAvailable)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build PCSG TopologyConstraintGroupConfigs and PodClique infos for base PodGang for PCSG %q: %w", pcsgConfig.Name, err)
 		}
@@ -234,15 +234,16 @@ func buildPCSGPackConstraintsAndPCLQsForBasePodGang(sc *syncContext, pcsReplica 
 	return pcsgPackConstraints, pclqInfos, nil
 }
 
-// doBuildBasePodGangPCLQsAndPCSGPackConstraints builds pclqInfos and TopologyConstraintGroupConfigs for a PCSG within a base PodGang.
-func doBuildBasePodGangPCLQsAndPCSGPackConstraints(sc *syncContext, pcsReplica int, pcsgConfig grovecorev1alpha1.PodCliqueScalingGroupConfig, minAvailable int) ([]pclqInfo, []groveschedulerv1alpha1.TopologyConstraintGroupConfig, error) {
+// doBuildPCSGGroupPackConstraintsAndPCLQs builds TopologyConstraintGroupConfigs and pclqInfos for a given PCSG and replica range.
+// This function is used for both base PodGang and scaled PodGangs.
+func doBuildPCSGGroupPackConstraintsAndPCLQs(sc *syncContext, pcsReplica int, pcsgConfig grovecorev1alpha1.PodCliqueScalingGroupConfig, pcsgReplicaStartIndex, pcsgReplicaEndIndex int) ([]groveschedulerv1alpha1.TopologyConstraintGroupConfig, []pclqInfo, error) {
 	var (
 		pclqInfos           []pclqInfo
 		pcsgPackConstraints []groveschedulerv1alpha1.TopologyConstraintGroupConfig
 	)
 
 	pcsgFQN := apicommon.GeneratePodCliqueScalingGroupName(apicommon.ResourceNameReplica{Name: sc.pcs.Name, Replica: pcsReplica}, pcsgConfig.Name)
-	for replicaIndex := 0; replicaIndex < minAvailable; replicaIndex++ {
+	for replicaIndex := pcsgReplicaStartIndex; replicaIndex < pcsgReplicaEndIndex; replicaIndex++ {
 		// Iterate through each PCLQ within the PCSG
 		pclqFQNs := make([]string, 0, len(pcsgConfig.CliqueNames))
 		for _, pclqName := range pcsgConfig.CliqueNames {
@@ -265,7 +266,7 @@ func doBuildBasePodGangPCLQsAndPCSGPackConstraints(sc *syncContext, pcsReplica i
 		}
 	}
 
-	return pclqInfos, pcsgPackConstraints, nil
+	return pcsgPackConstraints, pclqInfos, nil
 }
 
 func (r _resource) buildExpectedScaledPodGangsForPCSG(sc *syncContext, pcsReplica int) ([]*podGangInfo, error) {
