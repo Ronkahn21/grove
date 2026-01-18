@@ -303,10 +303,10 @@ func doBuildExpectedScaledPodGangForPCSG(sc *syncContext, pcsgFQN string, pcsgCo
 		pclqInfos = append(pclqInfos, buildPodCliqueInfo(sc, pclqTemplateSpec, pclqFQN, true))
 		pclqFQNs = append(pclqFQNs, pclqFQN)
 	}
-	topologyConstraint = createTopologyPackConstraint(sc, client.ObjectKeyFromObject(sc.pcs), sc.pcs.Spec.Template.TopologyConstraint)
 
 	var pcsgTopologyConstraints []groveschedulerv1alpha1.TopologyConstraintGroupConfig
 	if sc.tasEnabled {
+		topologyConstraint = createTopologyPackConstraint(sc, client.ObjectKeyFromObject(sc.pcs), sc.pcs.Spec.Template.TopologyConstraint)
 		pcsgTopologyConstraint := groveschedulerv1alpha1.TopologyConstraintGroupConfig{
 			Name:               fmt.Sprintf("%s-%d", pcsgFQN, pcsgReplica),
 			PodGroupNames:      pclqFQNs,
