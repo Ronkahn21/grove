@@ -1,0 +1,223 @@
+//go:build e2e
+
+package tests
+
+// /*
+// Copyright 2025 The Grove Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// */
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+	"github.com/ai-dynamo/grove/operator/e2e/utils"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+)
+
+// Test_TI1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
+// Scenario TI-1 (Topology Infrastructure Setup):
+// 1. Verify ClusterTopology CR exists with the correct 4-level hierarchy (zone, block, rack, host)
+// 2. Verify KAI Topology CR exists with matching levels
+// 3. Verify KAI Topology has owner reference to ClusterTopology
+// 4. Verify worker nodes have topology labels
+func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
+	ctx := context.Background()
+
+	clientset, _, dynamicClient, cleanup := prepareTestCluster(ctx, t, 0)
+	defer cleanup()
+
+	logger.Info("1. Verify ClusterTopology CR exists with correct 4-level hierarchy")
+
+	expectedLevels := []corev1alpha1.TopologyLevel{
+		{Domain: corev1alpha1.TopologyDomainZone, Key: "kubernetes.io/zone"},
+		{Domain: corev1alpha1.TopologyDomainBlock, Key: "kubernetes.io/block"},
+		{Domain: corev1alpha1.TopologyDomainRack, Key: "kubernetes.io/rack"},
+		{Domain: corev1alpha1.TopologyDomainHost, Key: "kubernetes.io/hostname"},
+	}
+
+	if err := utils.VerifyClusterTopologyLevels(ctx, dynamicClient, corev1alpha1.DefaultClusterTopologyName, expectedLevels, logger); err != nil {
+		t.Fatalf("Failed to verify ClusterTopology levels: %v", err)
+	}
+
+	logger.Info("2. Verify KAI Topology CR exists with matching levels and owner reference")
+
+	expectedKeys := []string{
+		"kubernetes.io/zone",
+		"kubernetes.io/block",
+		"kubernetes.io/rack",
+		"kubernetes.io/hostname",
+	}
+
+	if err := utils.VerifyKAITopologyLevels(ctx, dynamicClient, corev1alpha1.DefaultClusterTopologyName, expectedKeys, logger); err != nil {
+		t.Fatalf("Failed to verify KAI Topology levels: %v", err)
+	}
+
+	logger.Info("3. Verify worker nodes have topology labels")
+
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("Failed to list nodes: %v", err)
+	}
+
+	workerCount := 0
+	for _, node := range nodes.Items {
+		if _, isControlPlane := node.Labels["node-role.kubernetes.io/control-plane"]; isControlPlane {
+			continue
+		}
+
+		workerCount++
+
+		// Verify zone label
+		if zone, ok := node.Labels["kubernetes.io/zone"]; !ok || zone == "" {
+			t.Errorf("Node %s missing kubernetes.io/zone label", node.Name)
+		}
+
+		// Verify block label
+		if block, ok := node.Labels["kubernetes.io/block"]; !ok || block == "" {
+			t.Errorf("Node %s missing kubernetes.io/block label", node.Name)
+		}
+
+		// Verify rack label
+		if rack, ok := node.Labels["kubernetes.io/rack"]; !ok || rack == "" {
+			t.Errorf("Node %s missing kubernetes.io/rack label", node.Name)
+		}
+
+		// hostname label should exist by default
+		if hostname, ok := node.Labels["kubernetes.io/hostname"]; !ok || hostname == "" {
+			t.Errorf("Node %s missing kubernetes.io/hostname label", node.Name)
+		}
+	}
+
+	if workerCount == 0 {
+		t.Fatal("No worker nodes found in cluster")
+	}
+
+	logger.Infof("Successfully verified topology labels on %d worker nodes", workerCount)
+	logger.Info("🎉 Topology Infrastructure test completed successfully!")
+}
+
+// Test_TAS_BP1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
+// Scenario BP-1:
+// 1. Deploy workload with PCS (no constraint) containing 2 cliques:
+//   - worker-rack: packDomain=rack (3 pods)
+//   - worker-block: packDomain=block (4 pods)
+//
+// 2. Verify all 7 pods are scheduled successfully
+// 3. Verify worker-rack pods (3) are in the same rack
+// 4. Verify worker-block pods (4) are in the same block
+// 5. Verify different cliques can have independent topology constraints
+func Test_TAS_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 7-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 7)
+	defer cleanup()
+
+	expectedPods := 7 // worker-rack: 3 pods, worker-block: 4 pods
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-indep-clq",
+			YAMLPath:     "../yaml/tas-indep-clq.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (BP-1: multiple cliques with different constraints)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify worker-rack pods (3) are in the same rack")
+	rackPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-indep-clq-0-worker-rack")
+	if len(rackPods) != 3 {
+		t.Fatalf("Expected 3 worker-rack pods, got %d", len(rackPods))
+	}
+
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, rackPods, "kubernetes.io/rack", logger); err != nil {
+		t.Fatalf("Failed to verify worker-rack pods in same rack: %v", err)
+	}
+
+	logger.Info("4. Verify worker-block pods (4) are in the same block")
+	blockPods := utils.FilterPodsByLabel(allPods, "grove.io/podclique", "tas-indep-clq-0-worker-block")
+	if len(blockPods) != 4 {
+		t.Fatalf("Expected 4 worker-block pods, got %d", len(blockPods))
+	}
+
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, blockPods, "kubernetes.io/block", logger); err != nil {
+		t.Fatalf("Failed to verify worker-block pods in same block: %v", err)
+	}
+
+	logger.Info("5. Verify KAI PodGroup has correct SubGroups with topology constraints")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-indep-clq", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	podGroup, err := utils.FilterPodGroupByOwner(podGroups, "tas-indep-clq-0")
+	if err != nil {
+		t.Fatalf("Failed to find PodGroup for PodGang tas-indep-clq-0: %v", err)
+	}
+
+	// Verify top-level TopologyConstraint is empty (no PCS constraint in this test)
+	if err := utils.VerifyKAIPodGroupTopologyConstraint(podGroup, "", "", logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
+	}
+
+	// Verify SubGroups (2 standalone PCLQs - no PCSG)
+	expectedSubGroups := []utils.ExpectedSubGroup{
+		{
+			Name:                  "tas-indep-clq-0-worker-rack",
+			MinMember:             3,
+			Parent:                nil,
+			RequiredTopologyLevel: "kubernetes.io/rack",
+		},
+		{
+			Name:                  "tas-indep-clq-0-worker-block",
+			MinMember:             4,
+			Parent:                nil,
+			RequiredTopologyLevel: "kubernetes.io/block",
+		},
+	}
+	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
+	}
+
+	logger.Info("🎉 BP-1: Multiple Cliques with Different Constraints test completed successfully!")
+}
+
+// Test_TAS_SP1_FullHierarchyWithCascadingConstraints tests complete PCS → PCSG → PCLQ hierarchy
+// Scenario SP-1:
+// 1. Deploy workload with full 3-level hierarchy:
+//   - PCS: packDomain=block
+//   - PCSG: packDomain=rack (stricter than block)
+//   - PodCliques (prefill, decode): packDomain=host (strictest)
+//
+// 2. Verify all 8 pods are scheduled successfully
+// 3. Verify all pods are on the same host (strictest constraint wins)
+// 4. Verify constraint inheritance and override behavior
