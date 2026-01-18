@@ -224,7 +224,7 @@ func buildPCSGPackConstraintsAndPCLQsForBasePodGang(sc *syncContext, pcsReplica 
 	for _, pcsgConfig := range sc.pcs.Spec.Template.PodCliqueScalingGroupConfigs {
 		// Iterate through replicas of the PCSG that belong to the base PodGang [0, minAvailable-1]
 		minAvailable := int(*pcsgConfig.MinAvailable)
-		pcsgTopologyConstraints, pcsgPodCliqueInfos, err := doBuildPCSGGroupPackConstraintsAndPCLQs(sc, pcsReplica, pcsgConfig, 0, minAvailable)
+		pcsgPodCliqueInfos, pcsgTopologyConstraints, err := doBuildBasePodGangPCLQsAndPCSGPackConstraints(sc, pcsReplica, pcsgConfig, minAvailable)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to build PCSG TopologyConstraintGroupConfigs and PodClique infos for base PodGang for PCSG %q: %w", pcsgConfig.Name, err)
 		}
@@ -234,16 +234,15 @@ func buildPCSGPackConstraintsAndPCLQsForBasePodGang(sc *syncContext, pcsReplica 
 	return pcsgPackConstraints, pclqInfos, nil
 }
 
-// doBuildPCSGGroupPackConstraintsAndPCLQs builds TopologyConstraintGroupConfigs and pclqInfos for a given PCSG and replica range.
-// This function is used for both base PodGang and scaled PodGangs.
-func doBuildPCSGGroupPackConstraintsAndPCLQs(sc *syncContext, pcsReplica int, pcsgConfig grovecorev1alpha1.PodCliqueScalingGroupConfig, pcsgReplicaStartIndex, pcsgReplicaEndIndex int) ([]groveschedulerv1alpha1.TopologyConstraintGroupConfig, []pclqInfo, error) {
+// doBuildBasePodGangPCLQsAndPCSGPackConstraints builds pclqInfos and TopologyConstraintGroupConfigs for a PCSG within a base PodGang.
+func doBuildBasePodGangPCLQsAndPCSGPackConstraints(sc *syncContext, pcsReplica int, pcsgConfig grovecorev1alpha1.PodCliqueScalingGroupConfig, minAvailable int) ([]pclqInfo, []groveschedulerv1alpha1.TopologyConstraintGroupConfig, error) {
 	var (
 		pclqInfos           []pclqInfo
 		pcsgPackConstraints []groveschedulerv1alpha1.TopologyConstraintGroupConfig
 	)
 
 	pcsgFQN := apicommon.GeneratePodCliqueScalingGroupName(apicommon.ResourceNameReplica{Name: sc.pcs.Name, Replica: pcsReplica}, pcsgConfig.Name)
-	for replicaIndex := pcsgReplicaStartIndex; replicaIndex < pcsgReplicaEndIndex; replicaIndex++ {
+	for replicaIndex := 0; replicaIndex < minAvailable; replicaIndex++ {
 		// Iterate through each PCLQ within the PCSG
 		pclqFQNs := make([]string, 0, len(pcsgConfig.CliqueNames))
 		for _, pclqName := range pcsgConfig.CliqueNames {
@@ -266,7 +265,7 @@ func doBuildPCSGGroupPackConstraintsAndPCLQs(sc *syncContext, pcsReplica int, pc
 		}
 	}
 
-	return pcsgPackConstraints, pclqInfos, nil
+	return pclqInfos, pcsgPackConstraints, nil
 }
 
 func (r _resource) buildExpectedScaledPodGangsForPCSG(sc *syncContext, pcsReplica int) ([]*podGangInfo, error) {
@@ -290,6 +289,7 @@ func (r _resource) buildExpectedScaledPodGangsForPCSG(sc *syncContext, pcsReplic
 func doBuildExpectedScaledPodGangForPCSG(sc *syncContext, pcsgFQN string, pcsgConfig grovecorev1alpha1.PodCliqueScalingGroupConfig, pcsgReplica int, podGangIndex int) (*podGangInfo, error) {
 	var (
 		pclqInfos          = make([]pclqInfo, 0, len(pcsgConfig.CliqueNames))
+		pclqFQNs           = make([]string, 0, len(pcsgConfig.CliqueNames))
 		topologyConstraint *groveschedulerv1alpha1.TopologyConstraint
 	)
 
@@ -301,12 +301,25 @@ func doBuildExpectedScaledPodGangForPCSG(sc *syncContext, pcsgFQN string, pcsgCo
 		}
 		pclqFQN := apicommon.GeneratePodCliqueName(apicommon.ResourceNameReplica{Name: pcsgFQN, Replica: pcsgReplica}, pclqName)
 		pclqInfos = append(pclqInfos, buildPodCliqueInfo(sc, pclqTemplateSpec, pclqFQN, true))
+		pclqFQNs = append(pclqFQNs, pclqFQN)
 	}
-	topologyConstraint = createTopologyPackConstraint(sc, types.NamespacedName{Namespace: sc.pcs.Namespace, Name: pcsgFQN}, pcsgConfig.TopologyConstraint)
+	topologyConstraint = createTopologyPackConstraint(sc, client.ObjectKeyFromObject(sc.pcs), sc.pcs.Spec.Template.TopologyConstraint)
+
+	var pcsgTopologyConstraints []groveschedulerv1alpha1.TopologyConstraintGroupConfig
+	if sc.tasEnabled {
+		pcsgTopologyConstraint := groveschedulerv1alpha1.TopologyConstraintGroupConfig{
+			Name:               fmt.Sprintf("%s-%d", pcsgFQN, pcsgReplica),
+			PodGroupNames:      pclqFQNs,
+			TopologyConstraint: createTopologyPackConstraint(sc, types.NamespacedName{Namespace: sc.pcs.Namespace, Name: pcsgFQN}, pcsgConfig.TopologyConstraint),
+		}
+		pcsgTopologyConstraints = []groveschedulerv1alpha1.TopologyConstraintGroupConfig{pcsgTopologyConstraint}
+	}
+
 	pg := &podGangInfo{
-		fqn:                apicommon.CreatePodGangNameFromPCSGFQN(pcsgFQN, podGangIndex),
-		topologyConstraint: topologyConstraint,
-		pclqs:              pclqInfos,
+		fqn:                     apicommon.CreatePodGangNameFromPCSGFQN(pcsgFQN, podGangIndex),
+		topologyConstraint:      topologyConstraint,
+		pclqs:                   pclqInfos,
+		pcsgTopologyConstraints: pcsgTopologyConstraints,
 	}
 
 	return pg, nil
