@@ -1266,7 +1266,9 @@ func Test_TAS_SP5_PCSGPlusPCLQNoParentConstraint(t *testing.T) {
 
 	logger.Info("3. Verify each PCSG replica's pods on same host")
 	// Get pods for each PCSG replica
-	replica0Pods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroupreplica", "tas-pcsg-pclq-0-workers-0")
+	replica0Pods := utils.FilterPodsByLabel(
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-pcsg-pclq-0-workers"),
+		"grove.io/podcliquescalinggroup-replica-index", "0")
 	if len(replica0Pods) != 2 {
 		t.Fatalf("Expected 2 pods for replica 0, got %d", len(replica0Pods))
 	}
@@ -1274,7 +1276,9 @@ func Test_TAS_SP5_PCSGPlusPCLQNoParentConstraint(t *testing.T) {
 		t.Fatalf("Failed to verify replica 0 pods on same host: %v", err)
 	}
 
-	replica1Pods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroupreplica", "tas-pcsg-pclq-0-workers-1")
+	replica1Pods := utils.FilterPodsByLabel(
+		utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-pcsg-pclq-0-workers"),
+		"grove.io/podcliquescalinggroup-replica-index", "1")
 	if len(replica1Pods) != 2 {
 		t.Fatalf("Expected 2 pods for replica 1, got %d", len(replica1Pods))
 	}
@@ -1594,8 +1598,9 @@ func Test_TAS_SP8_LargeScalingRatio(t *testing.T) {
 	logger.Info("3. Verify each PCSG replica's pods on same host")
 	// Get pods for each PCSG replica (only minAvailable=3 from base PodGang)
 	for i := 0; i < 3; i++ {
-		replicaLabel := fmt.Sprintf("tas-large-scale-0-workers-%d", i)
-		replicaPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroupreplica", replicaLabel)
+		replicaPods := utils.FilterPodsByLabel(
+			utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-large-scale-0-workers"),
+			"grove.io/podcliquescalinggroup-replica-index", fmt.Sprintf("%d", i))
 		if len(replicaPods) != 2 {
 			t.Fatalf("Expected 2 pods for replica %d, got %d", i, len(replicaPods))
 		}
