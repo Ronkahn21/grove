@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	kaitopologyv1alpha1 "github.com/NVIDIA/KAI-scheduler/pkg/apis/kai/v1alpha1"
 	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
@@ -181,4 +182,31 @@ func VerifyPodsInSameTopologyDomain(ctx context.Context, clientset kubernetes.In
 
 	logger.Infof("Verified %d pods are in same topology domain %s=%s", len(pods), topologyKey, expectedValue)
 	return nil
+}
+
+// WaitForPodsReady waits for the expected number of pods to be created and running
+func WaitForPodsReady(ctx context.Context, clientset kubernetes.Interface, namespace, labelSelector string, expectedPods int, timeout, interval time.Duration, logger *Logger) error {
+	return PollForCondition(ctx, timeout, interval, func() (bool, error) {
+		pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		if err != nil {
+			return false, err
+		}
+
+		if len(pods.Items) != expectedPods {
+			logger.Debugf("Expected %d pods, got %d", expectedPods, len(pods.Items))
+			return false, nil
+		}
+
+		// Check if all pods are running
+		for _, pod := range pods.Items {
+			if pod.Status.Phase != v1.PodRunning {
+				logger.Debugf("Pod %s is not running: %s", pod.Name, pod.Status.Phase)
+				return false, nil
+			}
+		}
+
+		return true, nil
+	})
 }
