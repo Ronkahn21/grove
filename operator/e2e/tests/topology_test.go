@@ -811,7 +811,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 		t.Fatalf("Expected 2 router pods, got %d", len(routerPods))
 	}
 
-	logger.Info("9. Verify base PodGang's KAI PodGroup (decoder-0, prefill-0, router)")
+	logger.Info("9. Verify PodGang's KAI PodGroup (decoder-0, prefill-0, router)")
 	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-disagg-inference", tc.Timeout, tc.Interval, logger)
 	if err != nil {
 		t.Fatalf("Failed to get KAI PodGroups: %v", err)
@@ -861,7 +861,7 @@ func Test_TAS_SP4_DisaggregatedInferenceMultiplePCSGs(t *testing.T) {
 	}
 
 	// Verify PCS-level constraint is inherited
-	if err := utils.VerifyKAIPodGroupTopologyConstraint(decoderScaledPodGroup, "kubernetes.io/block", "", logger); err != nil {
+	if err = utils.VerifyKAIPodGroupTopologyConstraint(decoderScaledPodGroup, "kubernetes.io/block", "", logger); err != nil {
 		t.Fatalf("Failed to verify decoder scaled PodGroup top-level constraint: %v", err)
 	}
 
@@ -1681,4 +1681,223 @@ func Test_TAS_SP8_LargeScalingRatio(t *testing.T) {
 	}
 
 	logger.Info("🎉 SP-8: Large Scaling Ratio test completed successfully!")
+}
+
+// Test_TAS_SP9_MultiReplicaPCSWithThreeLevelHierarchy tests topology constraints with multiple PCS replicas
+// and a complete 3-level topology hierarchy (PCS → PCSG → PCLQ).
+// Scenario SP-9:
+// 1. Deploy PCS with 2 replicas, creating 6 PodGangs total (2 base + 4 scaled)
+// 2. Verify block-level constraint for all 20 pods
+// 3. Verify rack-level constraint for each PCSG replica
+// 4. Verify host-level constraint for pworker PCLQ
+// 5. Verify all 6 KAI PodGroups with correct SubGroup hierarchies
+func Test_TAS_SP9_MultiReplicaPCSWithThreeLevelHierarchy(t *testing.T) {
+	ctx := context.Background()
+
+	logger.Info("1. Initialize a 28-node Grove cluster for multi-replica PCS testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
+	defer cleanup()
+
+	expectedPods := 20 // PCS replica 0: 10 pods + PCS replica 1: 10 pods
+	tc := TestContext{
+		T:             t,
+		Ctx:           ctx,
+		Clientset:     clientset,
+		RestConfig:    restConfig,
+		DynamicClient: dynamicClient,
+		Namespace:     "default",
+		Timeout:       defaultPollTimeout,
+		Interval:      defaultPollInterval,
+		Workload: &WorkloadConfig{
+			Name:         "tas-disagg-inference",
+			YAMLPath:     "../yaml/tas-disagg-inference-multi-pcs.yaml",
+			Namespace:    "default",
+			ExpectedPods: expectedPods,
+		},
+	}
+
+	logger.Info("2. Deploy workload (SP-9: 2 PCS replicas with 3-level topology hierarchy)")
+	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
+	if err != nil {
+		t.Fatalf("Setup failed: %v", err)
+	}
+
+	logger.Info("3. Verify block-level constraint (all 20 pods in same block)")
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, allPods, "kubernetes.io/block", logger); err != nil {
+		t.Fatalf("Failed to verify all pods in same block: %v", err)
+	}
+
+	// Verify for each PCS replica
+	for pcsReplica := 0; pcsReplica < 2; pcsReplica++ {
+		replicaLabel := fmt.Sprintf("%d", pcsReplica)
+		replicaPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliqueset-replica-index", replicaLabel)
+		if len(replicaPods) != 10 {
+			t.Fatalf("Expected 10 pods for PCS replica %d, got %d", pcsReplica, len(replicaPods))
+		}
+
+		logger.Infof("4.%d. Verify PCS replica %d pods topology constraints", pcsReplica+1, pcsReplica)
+
+		// Verify decoder PCSG replica-0 (2 pods in same rack)
+		logger.Infof("4.%d.1. Verify decoder PCSG replica-0 (2 pods in same rack)", pcsReplica+1)
+		decoderReplica0 := utils.FilterPodsByLabel(
+			utils.FilterPodsByLabel(replicaPods, "grove.io/podcliquescalinggroup", fmt.Sprintf("tas-disagg-inference-%d-decoder", pcsReplica)),
+			"grove.io/podcliquescalinggroup-replica-index", "0")
+		if len(decoderReplica0) != 2 {
+			t.Fatalf("Expected 2 decoder replica-0 pods for PCS replica %d, got %d", pcsReplica, len(decoderReplica0))
+		}
+		if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, decoderReplica0, "kubernetes.io/rack", logger); err != nil {
+			t.Fatalf("Failed to verify decoder replica-0 pods in same rack for PCS replica %d: %v", pcsReplica, err)
+		}
+
+		// Verify decoder PCSG replica-1 (2 pods in same rack)
+		logger.Infof("4.%d.2. Verify decoder PCSG replica-1 (2 pods in same rack)", pcsReplica+1)
+		decoderReplica1 := utils.FilterPodsByLabel(
+			utils.FilterPodsByLabel(replicaPods, "grove.io/podcliquescalinggroup", fmt.Sprintf("tas-disagg-inference-%d-decoder", pcsReplica)),
+			"grove.io/podcliquescalinggroup-replica-index", "1")
+		if len(decoderReplica1) != 2 {
+			t.Fatalf("Expected 2 decoder replica-1 pods for PCS replica %d, got %d", pcsReplica, len(decoderReplica1))
+		}
+		if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, decoderReplica1, "kubernetes.io/rack", logger); err != nil {
+			t.Fatalf("Failed to verify decoder replica-1 pods in same rack for PCS replica %d: %v", pcsReplica, err)
+		}
+
+		// Verify prefill PCSG replica-0 (2 pods in same rack)
+		logger.Infof("4.%d.3. Verify prefill PCSG replica-0 (2 pods in same rack)", pcsReplica+1)
+		prefillReplica0 := utils.FilterPodsByLabel(
+			utils.FilterPodsByLabel(replicaPods, "grove.io/podcliquescalinggroup", fmt.Sprintf("tas-disagg-inference-%d-prefill", pcsReplica)),
+			"grove.io/podcliquescalinggroup-replica-index", "0")
+		if len(prefillReplica0) != 2 {
+			t.Fatalf("Expected 2 prefill replica-0 pods for PCS replica %d, got %d", pcsReplica, len(prefillReplica0))
+		}
+		if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, prefillReplica0, "kubernetes.io/rack", logger); err != nil {
+			t.Fatalf("Failed to verify prefill replica-0 pods in same rack for PCS replica %d: %v", pcsReplica, err)
+		}
+
+		// Verify pworker PCLQ constraint (host level) for prefill replica-0
+		logger.Infof("4.%d.4. Verify pworker pods on same host (PCLQ-level constraint) for prefill replica-0", pcsReplica+1)
+		pworkerReplica0 := utils.FilterPodsByLabel(prefillReplica0, "grove.io/podclique", fmt.Sprintf("tas-disagg-inference-%d-prefill-0-pworker", pcsReplica))
+		if len(pworkerReplica0) != 1 {
+			t.Fatalf("Expected 1 pworker pod in prefill replica-0 for PCS replica %d, got %d", pcsReplica, len(pworkerReplica0))
+		}
+
+		// Verify prefill PCSG replica-1 (2 pods in same rack)
+		logger.Infof("4.%d.5. Verify prefill PCSG replica-1 (2 pods in same rack)", pcsReplica+1)
+		prefillReplica1 := utils.FilterPodsByLabel(
+			utils.FilterPodsByLabel(replicaPods, "grove.io/podcliquescalinggroup", fmt.Sprintf("tas-disagg-inference-%d-prefill", pcsReplica)),
+			"grove.io/podcliquescalinggroup-replica-index", "1")
+		if len(prefillReplica1) != 2 {
+			t.Fatalf("Expected 2 prefill replica-1 pods for PCS replica %d, got %d", pcsReplica, len(prefillReplica1))
+		}
+		if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, prefillReplica1, "kubernetes.io/rack", logger); err != nil {
+			t.Fatalf("Failed to verify prefill replica-1 pods in same rack for PCS replica %d: %v", pcsReplica, err)
+		}
+
+		// Verify pworker PCLQ constraint (host level) for prefill replica-1
+		logger.Infof("4.%d.6. Verify pworker pods on same host (PCLQ-level constraint) for prefill replica-1", pcsReplica+1)
+		pworkerReplica1 := utils.FilterPodsByLabel(prefillReplica1, "grove.io/podclique", fmt.Sprintf("tas-disagg-inference-%d-prefill-1-pworker", pcsReplica))
+		if len(pworkerReplica1) != 1 {
+			t.Fatalf("Expected 1 pworker pod in prefill replica-1 for PCS replica %d, got %d", pcsReplica, len(pworkerReplica1))
+		}
+
+		// Verify router pods (2 standalone, no PCSG label)
+		logger.Infof("4.%d.7. Verify router pods (2 standalone)", pcsReplica+1)
+		routerPods := utils.FilterPodsByLabel(replicaPods, "grove.io/podclique", fmt.Sprintf("tas-disagg-inference-%d-router", pcsReplica))
+		if len(routerPods) != 2 {
+			t.Fatalf("Expected 2 router pods for PCS replica %d, got %d", pcsReplica, len(routerPods))
+		}
+	}
+
+	logger.Info("5. Verify all 6 KAI PodGroups with correct topology constraints and SubGroups")
+	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-disagg-inference", tc.Timeout, tc.Interval, logger)
+	if err != nil {
+		t.Fatalf("Failed to get KAI PodGroups: %v", err)
+	}
+
+	if len(podGroups) != 6 {
+		t.Fatalf("Expected 6 PodGroups (2 base + 4 scaled), got %d", len(podGroups))
+	}
+
+	// Verify each PCS replica's base and scaled PodGangs
+	for pcsReplica := 0; pcsReplica < 2; pcsReplica++ {
+		basePodGangName := fmt.Sprintf("tas-disagg-inference-%d", pcsReplica)
+		logger.Infof("5.%d. Verify base PodGang: %s", pcsReplica+1, basePodGangName)
+
+		basePodGroup, err := utils.FilterPodGroupByOwner(podGroups, basePodGangName)
+		if err != nil {
+			t.Fatalf("Failed to find PodGroup for base PodGang %s: %v", basePodGangName, err)
+		}
+
+		// Verify PCS-level constraint (block)
+		if err := utils.VerifyKAIPodGroupTopologyConstraint(basePodGroup, "kubernetes.io/block", "", logger); err != nil {
+			t.Fatalf("Failed to verify base PodGroup %s top-level constraint: %v", basePodGangName, err)
+		}
+
+		// Verify SubGroups for base PodGang
+		expectedBaseSubGroups := []utils.ExpectedSubGroup{
+			// Decoder PCSG replica 0 (parent)
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-decoder-0", pcsReplica), MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-decoder-0-dworker", pcsReplica), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-decoder-0", pcsReplica))},
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-decoder-0-dleader", pcsReplica), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-decoder-0", pcsReplica))},
+			// Prefill PCSG replica 0 (parent)
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-prefill-0", pcsReplica), MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-prefill-0-pworker", pcsReplica), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-prefill-0", pcsReplica)), RequiredTopologyLevel: "kubernetes.io/hostname"},
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-prefill-0-pleader", pcsReplica), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-prefill-0", pcsReplica))},
+			// Router (standalone)
+			{Name: fmt.Sprintf("tas-disagg-inference-%d-router", pcsReplica), MinMember: 2, Parent: nil},
+		}
+
+		if err := utils.VerifyKAIPodGroupSubGroups(basePodGroup, expectedBaseSubGroups, logger); err != nil {
+			t.Fatalf("Failed to verify base PodGroup %s SubGroups: %v", basePodGangName, err)
+		}
+
+		logger.Infof("Verified base PodGroup for PCS replica %d", pcsReplica)
+
+		// Verify scaled PodGangs for decoder and prefill
+		scaledPodGangs := []struct {
+			name       string
+			pcsgName   string
+			replicaIdx int
+		}{
+			{fmt.Sprintf("tas-disagg-inference-%d-decoder-0", pcsReplica), "decoder", 1},
+			{fmt.Sprintf("tas-disagg-inference-%d-prefill-0", pcsReplica), "prefill", 1},
+		}
+
+		for _, spg := range scaledPodGangs {
+			logger.Infof("5.%d. Verify scaled PodGang: %s", pcsReplica+1, spg.name)
+
+			scaledPodGroup, err := utils.FilterPodGroupByOwner(podGroups, spg.name)
+			if err != nil {
+				t.Fatalf("Failed to find PodGroup for scaled PodGang %s: %v", spg.name, err)
+			}
+
+			// Verify PCS-level constraint is inherited (block)
+			if err := utils.VerifyKAIPodGroupTopologyConstraint(scaledPodGroup, "kubernetes.io/block", "", logger); err != nil {
+				t.Fatalf("Failed to verify scaled PodGroup %s top-level constraint: %v", spg.name, err)
+			}
+
+			// Build expected SubGroups based on PCSG type
+			var expectedScaledSubGroups []utils.ExpectedSubGroup
+			if spg.pcsgName == "decoder" {
+				expectedScaledSubGroups = []utils.ExpectedSubGroup{
+					{Name: fmt.Sprintf("tas-disagg-inference-%d-decoder-%d", pcsReplica, spg.replicaIdx), MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+					{Name: fmt.Sprintf("tas-disagg-inference-%d-decoder-%d-dworker", pcsReplica, spg.replicaIdx), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-decoder-%d", pcsReplica, spg.replicaIdx))},
+					{Name: fmt.Sprintf("tas-disagg-inference-%d-decoder-%d-dleader", pcsReplica, spg.replicaIdx), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-decoder-%d", pcsReplica, spg.replicaIdx))},
+				}
+			} else {
+				expectedScaledSubGroups = []utils.ExpectedSubGroup{
+					{Name: fmt.Sprintf("tas-disagg-inference-%d-prefill-%d", pcsReplica, spg.replicaIdx), MinMember: 0, Parent: nil, RequiredTopologyLevel: "kubernetes.io/rack"},
+					{Name: fmt.Sprintf("tas-disagg-inference-%d-prefill-%d-pworker", pcsReplica, spg.replicaIdx), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-prefill-%d", pcsReplica, spg.replicaIdx)), RequiredTopologyLevel: "kubernetes.io/hostname"},
+					{Name: fmt.Sprintf("tas-disagg-inference-%d-prefill-%d-pleader", pcsReplica, spg.replicaIdx), MinMember: 1, Parent: ptr.To(fmt.Sprintf("tas-disagg-inference-%d-prefill-%d", pcsReplica, spg.replicaIdx))},
+				}
+			}
+
+			if err := utils.VerifyKAIPodGroupSubGroups(scaledPodGroup, expectedScaledSubGroups, logger); err != nil {
+				t.Fatalf("Failed to verify scaled PodGroup %s SubGroups: %v", spg.name, err)
+			}
+
+			logger.Infof("Verified scaled PodGroup %s for PCS replica %d", spg.name, pcsReplica)
+		}
+	}
+
+	logger.Info("🎉 SP-9: Multi-replica PCS with 3-level topology hierarchy test completed successfully!")
 }
