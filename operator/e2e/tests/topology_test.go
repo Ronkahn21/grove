@@ -24,11 +24,31 @@ import (
 	"testing"
 
 	corev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+	"github.com/ai-dynamo/grove/operator/e2e/setup"
 	"github.com/ai-dynamo/grove/operator/e2e/utils"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 )
+
+// deployWorkloadAndGetPods deploys workload, waits for pods to be ready, and returns the pod list
+func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error) {
+	if _, err := deployAndVerifyWorkload(tc); err != nil {
+		return nil, fmt.Errorf("failed to deploy workload: %w", err)
+	}
+
+	logger.Info("Wait for all pods to be scheduled and running")
+	if err := utils.WaitForPodsReady(tc.Ctx, tc.Clientset, tc.Namespace, tc.getLabelSelector(), expectedPods, tc.Timeout, tc.Interval, logger); err != nil {
+		return nil, fmt.Errorf("failed to wait for pods ready: %w", err)
+	}
+
+	logger.Info("Get all pods once for verification")
+	podList, err := listPods(tc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	return podList.Items, nil
+}
 
 // Test_TI1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
 // Scenario TI-1 (Topology Infrastructure Setup):
@@ -70,37 +90,22 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 
 	logger.Info("3. Verify worker nodes have topology labels")
 
-	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	// Use label selector to get only worker nodes by role label
+	workerLabelSelector := fmt.Sprintf("%s=%s", setup.WorkerNodeLabelKey, setup.WorkerNodeLabelValue)
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
+		LabelSelector: workerLabelSelector,
+	})
 	if err != nil {
 		t.Fatalf("Failed to list nodes: %v", err)
 	}
 
-	workerCount := 0
+	// Reuse expectedKeys from step 2 (same topology label keys)
+	workerCount := len(nodes.Items)
 	for _, node := range nodes.Items {
-		if _, isControlPlane := node.Labels["node-role.kubernetes.io/control-plane"]; isControlPlane {
-			continue
-		}
-
-		workerCount++
-
-		// Verify zone label
-		if zone, ok := node.Labels["kubernetes.io/zone"]; !ok || zone == "" {
-			t.Errorf("Node %s missing kubernetes.io/zone label", node.Name)
-		}
-
-		// Verify block label
-		if block, ok := node.Labels["kubernetes.io/block"]; !ok || block == "" {
-			t.Errorf("Node %s missing kubernetes.io/block label", node.Name)
-		}
-
-		// Verify rack label
-		if rack, ok := node.Labels["kubernetes.io/rack"]; !ok || rack == "" {
-			t.Errorf("Node %s missing kubernetes.io/rack label", node.Name)
-		}
-
-		// hostname label should exist by default
-		if hostname, ok := node.Labels["kubernetes.io/hostname"]; !ok || hostname == "" {
-			t.Errorf("Node %s missing kubernetes.io/hostname label", node.Name)
+		for _, key := range expectedKeys {
+			if value, ok := node.Labels[key]; !ok || value == "" {
+				t.Errorf("Node %s missing %s label", node.Name, key)
+			}
 		}
 	}
 
@@ -112,8 +117,8 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 	logger.Info("🎉 Topology Infrastructure test completed successfully!")
 }
 
-// Test_TAS_BP1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
-// Scenario BP-1:
+// Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
+// Scenario TAS-1:
 // 1. Deploy workload with PCS (no constraint) containing 2 cliques:
 //   - worker-rack: packDomain=rack (3 pods)
 //   - worker-block: packDomain=block (4 pods)
@@ -122,11 +127,11 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 // 3. Verify worker-rack pods (3) are in the same rack
 // 4. Verify worker-block pods (4) are in the same block
 // 5. Verify different cliques can have independent topology constraints
-func Test_TAS_BP1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
+func Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 7-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 7)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 7 // worker-rack: 3 pods, worker-block: 4 pods

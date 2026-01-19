@@ -60,6 +60,23 @@ const (
 	defaultPollTimeout = 5 * time.Minute
 	// defaultPollInterval is the interval for most polling conditions
 	defaultPollInterval = 5 * time.Second
+
+	// WorkerNodeLabelKey is the label key used to identify worker nodes in e2e tests.
+	// This can be changed if infrastructure changes.
+	WorkerNodeLabelKey = "node_role.e2e.grove.nvidia.com"
+	// WorkerNodeLabelValue is the label value for worker node identification in e2e tests.
+	WorkerNodeLabelValue = "agent"
+
+	// TotalWorkerNodes is the total number of worker nodes in the e2e test cluster.
+	TotalWorkerNodes = 28
+	// NodesPerBlock is the number of nodes per block (28 / 2 blocks).
+	NodesPerBlock = 14
+	// NodesPerRack is the number of nodes per rack (28 / 4 racks).
+	NodesPerRack = 7
+	// TotalBlocks is the number of blocks in the topology hierarchy.
+	TotalBlocks = 2
+	// TotalRacks is the number of racks in the topology hierarchy (2 per block).
+	TotalRacks = 4
 )
 
 // transientErrors contains error substrings that indicate a webhook is not ready yet
@@ -1071,24 +1088,19 @@ func waitForWebhookReady(ctx context.Context, restConfig *rest.Config, logger *u
 }
 
 // getBlockForNodeIndex returns the block label for a given node index (0-based).
-// Nodes 0-13 are in block-1, nodes 14-27 are in block-2.
+// Calculates block number by dividing index by nodes per block.
+// e.g., nodes 0-13 → block-1, nodes 14-27 → block-2
 func getBlockForNodeIndex(idx int) string {
-	if idx <= 13 {
-		return "block-1"
-	}
-	return "block-2"
+	blockNum := idx / NodesPerBlock
+	return fmt.Sprintf("block-%d", blockNum+1)
 }
 
 // getRackForNodeIndex returns the rack label for a given node index (0-based).
-// Distribution: 4 racks with 7 nodes each across 2 blocks.
+// Calculates rack number by dividing index by nodes per rack.
+// e.g., nodes 0-6 → rack-1, nodes 7-13 → rack-2, etc.
 func getRackForNodeIndex(idx int) string {
-	rackRanges := []int{7, 13, 20, 27}
-	for rackNum, maxIdx := range rackRanges {
-		if idx <= maxIdx {
-			return fmt.Sprintf("rack-%d", rackNum+1)
-		}
-	}
-	return "rack-4"
+	rackNum := idx / NodesPerRack
+	return fmt.Sprintf("rack-%d", rackNum+1)
 }
 
 // applyTopologyLabels applies hierarchical topology labels to worker nodes in the k3d cluster.
