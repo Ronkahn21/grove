@@ -50,13 +50,13 @@ func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error
 	return podList.Items, nil
 }
 
-// Test_TI1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
+// Test_TAS1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
 // Scenario TI-1 (Topology Infrastructure Setup):
 // 1. Verify ClusterTopology CR exists with the correct 4-level hierarchy (zone, block, rack, host)
 // 2. Verify KAI Topology CR exists with matching levels
 // 3. Verify KAI Topology has owner reference to ClusterTopology
 // 4. Verify worker nodes have topology labels
-func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
+func Test_TAS1_TopologyInfrastructure(t *testing.T) {
 	ctx := context.Background()
 
 	clientset, _, dynamicClient, cleanup := prepareTestCluster(ctx, t, 0)
@@ -65,10 +65,10 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 	logger.Info("1. Verify ClusterTopology CR exists with correct 4-level hierarchy")
 
 	expectedLevels := []corev1alpha1.TopologyLevel{
-		{Domain: corev1alpha1.TopologyDomainZone, Key: "kubernetes.io/zone"},
-		{Domain: corev1alpha1.TopologyDomainBlock, Key: "kubernetes.io/block"},
-		{Domain: corev1alpha1.TopologyDomainRack, Key: "kubernetes.io/rack"},
-		{Domain: corev1alpha1.TopologyDomainHost, Key: "kubernetes.io/hostname"},
+		{Domain: corev1alpha1.TopologyDomainZone, Key: setup.TopologyLabelZone},
+		{Domain: corev1alpha1.TopologyDomainBlock, Key: setup.TopologyLabelBlock},
+		{Domain: corev1alpha1.TopologyDomainRack, Key: setup.TopologyLabelRack},
+		{Domain: corev1alpha1.TopologyDomainHost, Key: setup.TopologyLabelHostname},
 	}
 
 	if err := utils.VerifyClusterTopologyLevels(ctx, dynamicClient, corev1alpha1.DefaultClusterTopologyName, expectedLevels, logger); err != nil {
@@ -78,10 +78,10 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 	logger.Info("2. Verify KAI Topology CR exists with matching levels and owner reference")
 
 	expectedKeys := []string{
-		"kubernetes.io/zone",
-		"kubernetes.io/block",
-		"kubernetes.io/rack",
-		"kubernetes.io/hostname",
+		setup.TopologyLabelZone,
+		setup.TopologyLabelBlock,
+		setup.TopologyLabelRack,
+		setup.TopologyLabelHostname,
 	}
 
 	if err := utils.VerifyKAITopologyLevels(ctx, dynamicClient, corev1alpha1.DefaultClusterTopologyName, expectedKeys, logger); err != nil {
@@ -117,8 +117,8 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 	logger.Info("🎉 Topology Infrastructure test completed successfully!")
 }
 
-// Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
-// Scenario TAS-1:
+// Test_TAS2_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
+// Scenario TAS-2:
 // 1. Deploy workload with PCS (no constraint) containing 2 cliques:
 //   - worker-rack: packDomain=rack (3 pods)
 //   - worker-block: packDomain=block (4 pods)
@@ -127,7 +127,7 @@ func Test_TAS_TI1_TopologyInfrastructure(t *testing.T) {
 // 3. Verify worker-rack pods (3) are in the same rack
 // 4. Verify worker-block pods (4) are in the same block
 // 5. Verify different cliques can have independent topology constraints
-func Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
+func Test_TAS2_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
@@ -164,7 +164,7 @@ func Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 		t.Fatalf("Expected 3 worker-rack pods, got %d", len(rackPods))
 	}
 
-	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, rackPods, "kubernetes.io/rack", logger); err != nil {
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, rackPods, setup.TopologyLabelRack, logger); err != nil {
 		t.Fatalf("Failed to verify worker-rack pods in same rack: %v", err)
 	}
 
@@ -174,7 +174,7 @@ func Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 		t.Fatalf("Expected 4 worker-block pods, got %d", len(blockPods))
 	}
 
-	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, blockPods, "kubernetes.io/block", logger); err != nil {
+	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, blockPods, setup.TopologyLabelBlock, logger); err != nil {
 		t.Fatalf("Failed to verify worker-block pods in same block: %v", err)
 	}
 
@@ -200,13 +200,13 @@ func Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 			Name:                  "tas-indep-clq-0-worker-rack",
 			MinMember:             3,
 			Parent:                nil,
-			RequiredTopologyLevel: "kubernetes.io/rack",
+			RequiredTopologyLevel: setup.TopologyLabelRack,
 		},
 		{
 			Name:                  "tas-indep-clq-0-worker-block",
 			MinMember:             4,
 			Parent:                nil,
-			RequiredTopologyLevel: "kubernetes.io/block",
+			RequiredTopologyLevel: setup.TopologyLabelBlock,
 		},
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
@@ -215,14 +215,3 @@ func Test_TAS_TAS1_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 
 	logger.Info("🎉 BP-1: Multiple Cliques with Different Constraints test completed successfully!")
 }
-
-// Test_TAS_SP1_FullHierarchyWithCascadingConstraints tests complete PCS → PCSG → PCLQ hierarchy
-// Scenario SP-1:
-// 1. Deploy workload with full 3-level hierarchy:
-//   - PCS: packDomain=block
-//   - PCSG: packDomain=rack (stricter than block)
-//   - PodCliques (prefill, decode): packDomain=host (strictest)
-//
-// 2. Verify all 8 pods are scheduled successfully
-// 3. Verify all pods are on the same host (strictest constraint wins)
-// 4. Verify constraint inheritance and override behavior
