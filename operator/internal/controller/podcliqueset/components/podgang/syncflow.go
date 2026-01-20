@@ -254,7 +254,7 @@ func doBuildBasePodGangPCLQsAndPCSGPackConstraints(sc *syncContext, pcsReplica i
 			pclqInfos = append(pclqInfos, buildPodCliqueInfo(sc, pclqTemplateSpec, pclqFQN, true))
 			pclqFQNs = append(pclqFQNs, pclqFQN)
 		}
-		if sc.tasEnabled {
+		if sc.tasEnabled && pcsgConfig.TopologyConstraint != nil {
 			// For every PCSG a TopologyConstraintGroupConfig is created which has its own TopologyConstraint that is
 			// defined for PCLQs within the PCSG. For each PCSG replica there is a separate TopologyConstraintGroupConfig.
 			pcsgPackConstraints = append(pcsgPackConstraints, groveschedulerv1alpha1.TopologyConstraintGroupConfig{
