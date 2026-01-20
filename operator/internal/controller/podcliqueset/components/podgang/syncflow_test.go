@@ -704,13 +704,10 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 				},
 				{
 					fqn:           "test-pcs-0-scaling-group-0",
-					topologyLevel: &topologyLevelZone,
+					topologyLevel: &topologyLevelRack,
 					pclqConstraints: map[string]grovecorev1alpha1.TopologyLevel{
 						"test-pcs-0-scaling-group-1-decode-leader": topologyLevelHost,
 						"test-pcs-0-scaling-group-1-decode-worker": topologyLevelHost,
-					},
-					pcsgConstraints: map[string]grovecorev1alpha1.TopologyLevel{
-						"test-pcs-0-scaling-group-1": topologyLevelRack,
 					},
 				},
 			},
@@ -770,13 +767,10 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 				},
 				{
 					fqn:           "test-pcs-0-scaling-group-0",
-					topologyLevel: &topologyLevelZone,
+					topologyLevel: &topologyLevelRack,
 					pclqConstraints: map[string]grovecorev1alpha1.TopologyLevel{
 						"test-pcs-0-scaling-group-1-decode-leader": topologyLevelHost,
 						"test-pcs-0-scaling-group-1-decode-worker": topologyLevelHost,
-					},
-					pcsgConstraints: map[string]grovecorev1alpha1.TopologyLevel{
-						"test-pcs-0-scaling-group-1": topologyLevelRack,
 					},
 				},
 			},
