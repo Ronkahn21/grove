@@ -53,28 +53,28 @@ const (
 	NodesPerRack = 7
 )
 
-// GetZoneForNodeIndex returns the zone label for a given node index (0-based).
-// Calculates zone number by dividing index by nodes per zone.
-// e.g., nodes 0-27 → zone-1, nodes 28-55 → zone-2, etc.
+// GetZoneForNodeIndex returns the zone label for a given node index.
+// Both the index parameter and the returned zone number are 0-based.
+// e.g., nodes 0-27 → zone-0, nodes 28-55 → zone-1, etc.
 func GetZoneForNodeIndex(idx int) string {
 	zoneNum := idx / NodesPerZone
-	return fmt.Sprintf("zone-%d", zoneNum+1)
+	return fmt.Sprintf("zone-%d", zoneNum)
 }
 
-// GetBlockForNodeIndex returns the block label for a given node index (0-based).
-// Calculates block number by dividing index by nodes per block.
-// e.g., nodes 0-13 → block-1, nodes 14-27 → block-2
+// GetBlockForNodeIndex returns the block label for a given node index.
+// Both the index parameter and the returned block number are 0-based.
+// e.g., nodes 0-13 → block-0, nodes 14-27 → block-1
 func GetBlockForNodeIndex(idx int) string {
 	blockNum := idx / NodesPerBlock
-	return fmt.Sprintf("block-%d", blockNum+1)
+	return fmt.Sprintf("block-%d", blockNum)
 }
 
-// GetRackForNodeIndex returns the rack label for a given node index (0-based).
-// Calculates rack number by dividing index by nodes per rack.
-// e.g., nodes 0-6 → rack-1, nodes 7-13 → rack-2, etc.
+// GetRackForNodeIndex returns the rack label for a given node index.
+// Both the index parameter and the returned rack number are 0-based.
+// e.g., nodes 0-6 → rack-0, nodes 7-13 → rack-1, etc.
 func GetRackForNodeIndex(idx int) string {
 	rackNum := idx / NodesPerRack
-	return fmt.Sprintf("rack-%d", rackNum+1)
+	return fmt.Sprintf("rack-%d", rackNum)
 }
 
 // GetWorkerNodeLabelSelector returns the label selector for worker nodes in e2e tests.
@@ -86,8 +86,8 @@ func GetWorkerNodeLabelSelector() string {
 // applyTopologyLabels applies hierarchical topology labels to worker nodes in the k3d cluster.
 // Creates a 4-level topology hierarchy: zone -> block -> rack -> host (kubernetes.io/hostname already exists)
 // Distribution strategy for 28 worker nodes:
-//   - Zone: all nodes in "zone-1"
-//   - Block: nodes 0-13 in "block-1", nodes 14-27 in "block-2"
+//   - Zone: all nodes in "zone-0"
+//   - Block: nodes 0-13 in "block-0", nodes 14-27 in "block-1"
 //   - Rack: 4 racks total (2 per block), 7 hosts per rack
 func applyTopologyLabels(ctx context.Context, restConfig *rest.Config, logger *utils.Logger) error {
 	logger.Info("🏷️  Applying hierarchical topology labels to worker nodes...")

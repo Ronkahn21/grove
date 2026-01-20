@@ -51,7 +51,6 @@ func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error
 }
 
 // Test_TAS1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
-// Scenario TI-1 (Topology Infrastructure Setup):
 // 1. Verify ClusterTopology CR exists with the correct 4-level hierarchy (zone, block, rack, host)
 // 2. Verify KAI Topology CR exists with matching levels
 // 3. Verify KAI Topology has owner reference to ClusterTopology
@@ -118,7 +117,6 @@ func Test_TAS1_TopologyInfrastructure(t *testing.T) {
 }
 
 // Test_TAS2_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
-// Scenario TAS-2:
 // 1. Deploy workload with PCS (no constraint) containing 2 cliques:
 //   - worker-rack: packDomain=rack (3 pods)
 //   - worker-block: packDomain=block (4 pods)
@@ -152,7 +150,7 @@ func Test_TAS2_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 		},
 	}
 
-	logger.Info("2. Deploy workload (BP-1: multiple cliques with different constraints)")
+	logger.Info("2. Deploy workload (TAS2: multiple cliques with different constraints)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
@@ -213,5 +211,5 @@ func Test_TAS2_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
 	}
 
-	logger.Info("🎉 BP-1: Multiple Cliques with Different Constraints test completed successfully!")
+	logger.Info("🎉 TAS2: Multiple Cliques with Different Constraints test completed successfully!")
 }
