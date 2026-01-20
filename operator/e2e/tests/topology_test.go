@@ -37,7 +37,7 @@ func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error
 	}
 
 	logger.Info("Wait for all pods to be scheduled and running")
-	if err := utils.WaitForPodsReady(tc.Ctx, tc.Clientset, tc.Namespace, tc.getLabelSelector(), expectedPods, tc.Timeout, tc.Interval, logger); err != nil {
+	if err := utils.WaitForPods(tc.Ctx, tc.RestConfig, []string{tc.Namespace}, tc.getLabelSelector(), expectedPods, tc.Timeout, tc.Interval, logger); err != nil {
 		return nil, fmt.Errorf("failed to wait for pods ready: %w", err)
 	}
 
@@ -91,7 +91,7 @@ func Test_TAS1_TopologyInfrastructure(t *testing.T) {
 	logger.Info("3. Verify worker nodes have topology labels")
 
 	// Use label selector to get only worker nodes by role label
-	workerLabelSelector := fmt.Sprintf("%s=%s", setup.WorkerNodeLabelKey, setup.WorkerNodeLabelValue)
+	workerLabelSelector := setup.GetWorkerNodeLabelSelector()
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
 		LabelSelector: workerLabelSelector,
 	})

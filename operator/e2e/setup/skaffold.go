@@ -156,6 +156,7 @@ func runSkaffoldBuild(ctx context.Context, absSkaffoldPath, skaffoldDir, kubecon
 	// Set up environment variables
 	// To allow running the tests from the IDE
 	cmd.Env = filterEnv(os.Environ(), "GOOS", "GOARCH")
+	config.Logger.Debugf("Filtered environment variables (removed GOOS, GOARCH), kept %d vars", len(cmd.Env))
 	cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
 
 	cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))

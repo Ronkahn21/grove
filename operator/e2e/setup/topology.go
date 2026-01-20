@@ -77,6 +77,12 @@ func GetRackForNodeIndex(idx int) string {
 	return fmt.Sprintf("rack-%d", rackNum+1)
 }
 
+// GetWorkerNodeLabelSelector returns the label selector for worker nodes in e2e tests.
+// Returns a formatted string "key=value" for use with Kubernetes label selectors.
+func GetWorkerNodeLabelSelector() string {
+	return fmt.Sprintf("%s=%s", WorkerNodeLabelKey, WorkerNodeLabelValue)
+}
+
 // applyTopologyLabels applies hierarchical topology labels to worker nodes in the k3d cluster.
 // Creates a 4-level topology hierarchy: zone -> block -> rack -> host (kubernetes.io/hostname already exists)
 // Distribution strategy for 28 worker nodes:
@@ -93,7 +99,7 @@ func applyTopologyLabels(ctx context.Context, restConfig *rest.Config, logger *u
 	}
 
 	// Get all worker nodes (filter by label set during cluster creation)
-	workerLabelSelector := fmt.Sprintf("%s=%s", WorkerNodeLabelKey, WorkerNodeLabelValue)
+	workerLabelSelector := GetWorkerNodeLabelSelector()
 	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
 		LabelSelector: workerLabelSelector,
 	})
