@@ -967,7 +967,6 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 					// iterate over computed PCSG topology constraints to ensure that expectations are properly defined.
 					// This ensures that developer mistakes are caught when defining the topology constraint expectations.
 					for _, actualPCSGTC := range computedPodGang.pcsgTopologyConstraints {
-
 						_, exists := expectedPGConstraint.pcsgConstraints[actualPCSGTC.Name]
 						if !exists {
 							t.Errorf("Unexpected PCSG topology constraint for %s found in PodGang %s", actualPCSGTC.Name, computedPodGang.fqn)
