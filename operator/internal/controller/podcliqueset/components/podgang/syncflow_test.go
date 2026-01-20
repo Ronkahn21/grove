@@ -845,7 +845,6 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 					Replicas:     ptr.To(int32(2)),
 					MinAvailable: ptr.To(int32(1)),
 					CliqueNames:  []string{"decode-leader", "decode-worker"},
-					// Note: NO TopologyConstraint field - it's nil
 				},
 			},
 			expectedNumPodGangs: 2,
