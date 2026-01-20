@@ -85,11 +85,11 @@ func TestMinAvailableWithHPAScaling(t *testing.T) {
 			},
 		},
 		{
-			name:                   "Scale to exactly minAvailable",
-			minAvailable:           ptr.To(int32(2)),
-			initialReplicas:        4,
-			scaledReplicas:         2,
-			expectedBasePodGang:    "test-pcs-0", // Contains replicas 0-1
+			name:                "Scale to exactly minAvailable",
+			minAvailable:        ptr.To(int32(2)),
+			initialReplicas:     4,
+			scaledReplicas:      2,
+			expectedBasePodGang: "test-pcs-0", // Contains replicas 0-1
 			expectedScaledPodGangs: []string{
 				// No scaled PodGangs when replicas == minAvailable
 			},
@@ -816,6 +816,59 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 			},
 			expectedNumPodGangs:                2,
 			expectedPodGangTopologyConstraints: []expectedPodGangTopologyConstraints{},
+		},
+		{
+			name:             "PCS with PCSG where PCSG has nil topology constraints and falls back to PCS level",
+			tasEnabled:       true,
+			pcsTopologyLevel: &topologyLevelZone,
+			pclqTemplateSpecs: []*grovecorev1alpha1.PodCliqueTemplateSpec{
+				{
+					Name:               "decode-leader",
+					TopologyConstraint: &grovecorev1alpha1.TopologyConstraint{PackDomain: "host"},
+					Spec: grovecorev1alpha1.PodCliqueSpec{
+						Replicas:     1,
+						MinAvailable: ptr.To(int32(1)),
+					},
+				},
+				{
+					Name:               "decode-worker",
+					TopologyConstraint: &grovecorev1alpha1.TopologyConstraint{PackDomain: "host"},
+					Spec: grovecorev1alpha1.PodCliqueSpec{
+						Replicas:     5,
+						MinAvailable: ptr.To(int32(1)),
+					},
+				},
+			},
+			pcsgConfigs: []grovecorev1alpha1.PodCliqueScalingGroupConfig{
+				{
+					Name:         "scaling-group",
+					Replicas:     ptr.To(int32(2)),
+					MinAvailable: ptr.To(int32(1)),
+					CliqueNames:  []string{"decode-leader", "decode-worker"},
+					// Note: NO TopologyConstraint field - it's nil
+				},
+			},
+			expectedNumPodGangs: 2,
+			expectedPodGangTopologyConstraints: []expectedPodGangTopologyConstraints{
+				{
+					fqn:           "test-pcs-0",
+					topologyLevel: &topologyLevelZone,
+					pclqConstraints: map[string]grovecorev1alpha1.TopologyLevel{
+						"test-pcs-0-scaling-group-0-decode-leader": topologyLevelHost,
+						"test-pcs-0-scaling-group-0-decode-worker": topologyLevelHost,
+					},
+					// Don't specify pcsgConstraints - with validation fix, nil means "don't validate"
+				},
+				{
+					fqn:           "test-pcs-0-scaling-group-0",
+					topologyLevel: &topologyLevelZone,
+					pclqConstraints: map[string]grovecorev1alpha1.TopologyLevel{
+						"test-pcs-0-scaling-group-1-decode-leader": topologyLevelHost,
+						"test-pcs-0-scaling-group-1-decode-worker": topologyLevelHost,
+					},
+					// Don't specify pcsgConstraints
+				},
+			},
 		},
 	}
 
