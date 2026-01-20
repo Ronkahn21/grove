@@ -85,11 +85,11 @@ func TestMinAvailableWithHPAScaling(t *testing.T) {
 			},
 		},
 		{
-			name:                   "Scale to exactly minAvailable",
-			minAvailable:           ptr.To(int32(2)),
-			initialReplicas:        4,
-			scaledReplicas:         2,
-			expectedBasePodGang:    "test-pcs-0", // Contains replicas 0-1
+			name:                "Scale to exactly minAvailable",
+			minAvailable:        ptr.To(int32(2)),
+			initialReplicas:     4,
+			scaledReplicas:      2,
+			expectedBasePodGang: "test-pcs-0", // Contains replicas 0-1
 			expectedScaledPodGangs: []string{
 				// No scaled PodGangs when replicas == minAvailable
 			},
@@ -857,7 +857,6 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 						"test-pcs-0-scaling-group-0-decode-leader": topologyLevelHost,
 						"test-pcs-0-scaling-group-0-decode-worker": topologyLevelHost,
 					},
-					// Don't specify pcsgConstraints - with validation fix, nil means "don't validate"
 				},
 				{
 					fqn:           "test-pcs-0-scaling-group-0",
@@ -866,7 +865,6 @@ func TestComputeExpectedPodGangsWithTopologyConstraints(t *testing.T) {
 						"test-pcs-0-scaling-group-1-decode-leader": topologyLevelHost,
 						"test-pcs-0-scaling-group-1-decode-worker": topologyLevelHost,
 					},
-					// Don't specify pcsgConstraints
 				},
 			},
 		},
