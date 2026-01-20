@@ -301,7 +301,22 @@ func doBuildExpectedScaledPodGangForPCSG(sc *syncContext, pcsgFQN string, pcsgCo
 		pclqFQN := apicommon.GeneratePodCliqueName(apicommon.ResourceNameReplica{Name: pcsgFQN, Replica: pcsgReplica}, pclqName)
 		pclqInfos = append(pclqInfos, buildPodCliqueInfo(sc, pclqTemplateSpec, pclqFQN, true))
 	}
-	topologyConstraint = createTopologyPackConstraint(sc, types.NamespacedName{Namespace: sc.pcs.Namespace, Name: pcsgFQN}, pcsgConfig.TopologyConstraint)
+
+	// For scaled PodGangs, the TopologyConstraint is determined as follows:
+	// 1. If PCSG has a TopologyConstraint defined, use that for the PodGang's TopologyConstraint
+	// 2. Else, fall back to PCS-level TopologyConstraint
+	// no need to set pcsg topology constraint
+	if sc.tasEnabled {
+		if pcsgConfig.TopologyConstraint != nil {
+			topologyConstraint = createTopologyPackConstraint(sc,
+				types.NamespacedName{Namespace: sc.pcs.Namespace, Name: pcsgFQN}, pcsgConfig.TopologyConstraint)
+		} else {
+			// Fall back to PCS-level constraints
+			topologyConstraint = createTopologyPackConstraint(sc, client.ObjectKeyFromObject(sc.pcs),
+				sc.pcs.Spec.Template.TopologyConstraint)
+		}
+	}
+
 	pg := &podGangInfo{
 		fqn:                apicommon.CreatePodGangNameFromPCSGFQN(pcsgFQN, podGangIndex),
 		topologyConstraint: topologyConstraint,
