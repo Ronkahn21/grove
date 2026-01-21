@@ -302,14 +302,12 @@ func Test_TAS3_PCSOnlyConstraint(t *testing.T) {
 		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
 	}
 
-	// Verify SubGroups (2 PCSG parents + 2 PCLQ children + 1 router standalone = 5 total)
+	// Verify SubGroups (2 PCLQ children + 1 router standalone = 3 total)
+	// Note: PCSG parent groups are NOT created when PCSG has nil TopologyConstraint (PR #357)
 	expectedSubGroups := []utils.ExpectedSubGroup{
-		// PCSG replicas (parent groups, inherit PCS rack constraint)
-		{Name: "tas-sl-pcs-only-0-workers-0", MinMember: 0, Parent: nil, RequiredTopologyLevel: setup.TopologyLabelRack},
-		{Name: "tas-sl-pcs-only-0-workers-1", MinMember: 0, Parent: nil, RequiredTopologyLevel: setup.TopologyLabelRack},
-		// Worker PCLQs (children of PCSG replicas)
-		{Name: "tas-sl-pcs-only-0-workers-0-worker", MinMember: 1, Parent: ptr.To("tas-sl-pcs-only-0-workers-0")},
-		{Name: "tas-sl-pcs-only-0-workers-1-worker", MinMember: 1, Parent: ptr.To("tas-sl-pcs-only-0-workers-1")},
+		// Worker PCLQs (directly under PCS constraint, no PCSG parents)
+		{Name: "tas-sl-pcs-only-0-workers-0-worker", MinMember: 1, Parent: nil},
+		{Name: "tas-sl-pcs-only-0-workers-1-worker", MinMember: 1, Parent: nil},
 		// Router (standalone)
 		{Name: "tas-sl-pcs-only-0-router", MinMember: 2, Parent: nil},
 	}
@@ -609,14 +607,12 @@ func Test_TAS7_NoTopologyConstraint(t *testing.T) {
 		t.Fatalf("Failed to verify KAI PodGroup top-level constraint: %v", err)
 	}
 
-	// Verify SubGroups (2 PCSG parents + 2 PCLQ children, all with NO constraints)
+	// Verify SubGroups (2 PCLQ children, NO constraints)
+	// Note: PCSG parent groups are NOT created when PCSG has nil TopologyConstraint (PR #357)
 	expectedSubGroups := []utils.ExpectedSubGroup{
-		// PCSG replicas (parent groups, no constraint)
-		{Name: "tas-no-constraint-0-workers-0", MinMember: 0, Parent: nil},
-		{Name: "tas-no-constraint-0-workers-1", MinMember: 0, Parent: nil},
-		// Worker PCLQs (children, no constraint)
-		{Name: "tas-no-constraint-0-workers-0-worker", MinMember: 2, Parent: ptr.To("tas-no-constraint-0-workers-0")},
-		{Name: "tas-no-constraint-0-workers-1-worker", MinMember: 2, Parent: ptr.To("tas-no-constraint-0-workers-1")},
+		// Worker PCLQs (directly under PCS, no PCSG parents, no constraints)
+		{Name: "tas-no-constraint-0-workers-0-worker", MinMember: 2, Parent: nil},
+		{Name: "tas-no-constraint-0-workers-1-worker", MinMember: 2, Parent: nil},
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
