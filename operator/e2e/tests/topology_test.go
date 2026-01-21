@@ -31,6 +31,26 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// deployWorkloadAndGetPods deploys workload, waits for pods to be ready, and returns the pod list
+func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error) {
+	if _, err := deployAndVerifyWorkload(tc); err != nil {
+		return nil, fmt.Errorf("failed to deploy workload: %w", err)
+	}
+
+	logger.Info("Wait for all pods to be scheduled and running")
+	if err := utils.WaitForPods(tc.Ctx, tc.RestConfig, []string{tc.Namespace}, tc.getLabelSelector(), expectedPods, tc.Timeout, tc.Interval, logger); err != nil {
+		return nil, fmt.Errorf("failed to wait for pods ready: %w", err)
+	}
+
+	logger.Info("Get all pods once for verification")
+	podList, err := listPods(tc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	return podList.Items, nil
+}
+
 // Test_TAS1_TopologyInfrastructure verifies that the operator creates ClusterTopology and KAI Topology CRs at startup
 // 1. Verify ClusterTopology CR exists with the correct 4-level hierarchy (zone, block, rack, host)
 // 2. Verify KAI Topology CR exists with matching levels
@@ -70,37 +90,22 @@ func Test_TAS1_TopologyInfrastructure(t *testing.T) {
 
 	logger.Info("3. Verify worker nodes have topology labels")
 
-	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	// Use label selector to get only worker nodes by role label
+	workerLabelSelector := setup.GetWorkerNodeLabelSelector()
+	nodes, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{
+		LabelSelector: workerLabelSelector,
+	})
 	if err != nil {
 		t.Fatalf("Failed to list nodes: %v", err)
 	}
 
-	workerCount := 0
+	// Reuse expectedKeys from step 2 (same topology label keys)
+	workerCount := len(nodes.Items)
 	for _, node := range nodes.Items {
-		if _, isControlPlane := node.Labels["node-role.kubernetes.io/control-plane"]; isControlPlane {
-			continue
-		}
-
-		workerCount++
-
-		// Verify zone label
-		if zone, ok := node.Labels[setup.TopologyLabelZone]; !ok || zone == "" {
-			t.Errorf("Node %s missing %s label", node.Name, setup.TopologyLabelZone)
-		}
-
-		// Verify block label
-		if block, ok := node.Labels[setup.TopologyLabelBlock]; !ok || block == "" {
-			t.Errorf("Node %s missing %s label", node.Name, setup.TopologyLabelBlock)
-		}
-
-		// Verify rack label
-		if rack, ok := node.Labels[setup.TopologyLabelRack]; !ok || rack == "" {
-			t.Errorf("Node %s missing %s label", node.Name, setup.TopologyLabelRack)
-		}
-
-		// hostname label should exist by default
-		if hostname, ok := node.Labels[setup.TopologyLabelHostname]; !ok || hostname == "" {
-			t.Errorf("Node %s missing %s label", node.Name, setup.TopologyLabelHostname)
+		for _, key := range expectedKeys {
+			if value, ok := node.Labels[key]; !ok || value == "" {
+				t.Errorf("Node %s missing %s label", node.Name, key)
+			}
 		}
 	}
 
@@ -109,7 +114,7 @@ func Test_TAS1_TopologyInfrastructure(t *testing.T) {
 	}
 
 	logger.Infof("Successfully verified topology labels on %d worker nodes", workerCount)
-	logger.Info("🎉 TAS1: Topology Infrastructure test completed successfully!")
+	logger.Info("🎉 Topology Infrastructure test completed successfully!")
 }
 
 // Test_TAS2_MultipleCliquesWithDifferentConstraints tests PCS with multiple cliques having different topology constraints
@@ -124,8 +129,8 @@ func Test_TAS1_TopologyInfrastructure(t *testing.T) {
 func Test_TAS2_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	ctx := context.Background()
 
-	logger.Info("1. Initialize a 7-node Grove cluster for topology testing")
-	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 7)
+	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
+	clientset, restConfig, dynamicClient, cleanup := prepareTestCluster(ctx, t, 28)
 	defer cleanup()
 
 	expectedPods := 7 // worker-rack: 3 pods, worker-block: 4 pods
@@ -219,25 +224,7 @@ func Test_TAS2_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 // 2. Verify all 8 pods are scheduled successfully
 // 3. Verify all pods are on the same host (strictest constraint wins)
 // 4. Verify constraint inheritance and override behavior
-func deployWorkloadAndGetPods(tc TestContext, expectedPods int) ([]v1.Pod, error) {
-	if _, err := deployAndVerifyWorkload(tc); err != nil {
-		return nil, fmt.Errorf("failed to deploy workload: %w", err)
-	}
-
-	logger.Info("Wait for all pods to be scheduled and running")
-	if err := utils.WaitForPodsReady(tc.Ctx, tc.Clientset, tc.Namespace, tc.getLabelSelector(), expectedPods, tc.Timeout, tc.Interval, logger); err != nil {
-		return nil, fmt.Errorf("failed to wait for pods ready: %w", err)
-	}
-
-	logger.Info("Get all pods once for verification")
-	podList, err := listPods(tc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	return podList.Items, nil
-}
-
+// Test_TAS3_PCSOnlyConstraint tests constraint only at PCS level with no PCSG/PCLQ constraints
 func Test_TAS3_PCSOnlyConstraint(t *testing.T) {
 	ctx := context.Background()
 

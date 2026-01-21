@@ -1174,4 +1174,3 @@ func waitForWebhookReady(ctx context.Context, restConfig *rest.Config, logger *u
 		return true, nil
 	})
 }
-
