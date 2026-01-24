@@ -484,8 +484,8 @@ func Test_TAS6_StandalonePCLQOnlyPCSZoneConstraint(t *testing.T) {
 		Timeout:       defaultPollTimeout,
 		Interval:      defaultPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "tas-zone-level",
-			YAMLPath:     "../yaml/tas-zone-level.yaml",
+			Name:         "tas-standalone-pclq",
+			YAMLPath:     "../yaml/tas-standalone-pclq-only-pcs-zone.yaml",
 			Namespace:    "default",
 			ExpectedPods: expectedPods,
 		},
