@@ -28,7 +28,6 @@ import (
 	"github.com/ai-dynamo/grove/operator/e2e/utils"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 )
 
 // deployWorkloadAndGetPods deploys workload, waits for pods to be ready, and returns the pod list
@@ -215,16 +214,15 @@ func Test_TAS2_MultipleCliquesWithDifferentConstraints(t *testing.T) {
 	logger.Info("🎉 TAS2: Multiple Cliques with Different Constraints test completed successfully!")
 }
 
-// Test_TAS_SP1_FullHierarchyWithCascadingConstraints tests complete PCS → PCSG → PCLQ hierarchy
-// 1. Deploy workload with full 3-level hierarchy:
-//   - PCS: packDomain=block
-//   - PCSG: packDomain=rack (stricter than block)
-//   - PodCliques (prefill, decode): packDomain=host (strictest)
-//
-// 2. Verify all 8 pods are scheduled successfully
-// 3. Verify all pods are on the same host (strictest constraint wins)
-// 4. Verify constraint inheritance and override behavior
 // Test_TAS3_PCSOnlyConstraint tests constraint only at PCS level with no PCSG/PCLQ constraints
+// 1. Deploy workload with PCS-only constraint (packDomain: rack)
+//   - PCSG: NO explicit constraint (nil)
+//   - PCLQs: NO explicit constraints
+//
+// 2. Verify all 4 pods are in same rack (inherited from PCS)
+// 3. Verify PCSG worker pods (2 total, 1 per replica)
+// 4. Verify router pods (2 standalone)
+// 5. Verify KAI PodGroup SubGroups: NO PCSG parent groups (because PCSG constraint is nil, per PR #357)
 func Test_TAS3_PCSOnlyConstraint(t *testing.T) {
 	ctx := context.Background()
 
@@ -293,10 +291,10 @@ func Test_TAS3_PCSOnlyConstraint(t *testing.T) {
 	// Note: PCSG parent groups are NOT created when PCSG has nil TopologyConstraint (PR #357)
 	expectedSubGroups := []utils.ExpectedSubGroup{
 		// Worker PCLQs (directly under PCS constraint, no PCSG parents)
-		{Name: "tas-sl-pcs-only-0-workers-0-worker", MinMember: 1, Parent: nil},
-		{Name: "tas-sl-pcs-only-0-workers-1-worker", MinMember: 1, Parent: nil},
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-sl-pcs-only", 0, "workers-0-worker", 1, ""),
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-sl-pcs-only", 0, "workers-1-worker", 1, ""),
 		// Router (standalone)
-		{Name: "tas-sl-pcs-only-0-router", MinMember: 2, Parent: nil},
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-sl-pcs-only", 0, "router", 2, ""),
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
@@ -344,7 +342,7 @@ func Test_TAS4_PCSGOnlyConstraint(t *testing.T) {
 	logger.Info("3. Verify PCSG worker pods (2 total, 1 per replica) in same rack")
 	workerPods := utils.FilterPodsByLabel(allPods, "grove.io/podcliquescalinggroup", "tas-sl-pcsg-only-0-workers")
 	if len(workerPods) != 2 {
-		t.Fatalf("Expected 2 worker pod, got %d", len(workerPods))
+		t.Fatalf("Expected 2 worker pods, got %d", len(workerPods))
 	}
 	if err := utils.VerifyPodsInSameTopologyDomain(tc.Ctx, tc.Clientset, workerPods, setup.TopologyLabelRack, logger); err != nil {
 		t.Fatalf("Failed to verify worker pods in same rack: %v", err)
@@ -375,13 +373,13 @@ func Test_TAS4_PCSGOnlyConstraint(t *testing.T) {
 	// Verify SubGroups (2 PCSG parents + 2 PCLQ children + 1 router standalone = 5 total)
 	expectedSubGroups := []utils.ExpectedSubGroup{
 		// PCSG replicas (parent groups, rack constraint)
-		{Name: "tas-sl-pcsg-only-0-workers-0", MinMember: 0, Parent: nil, RequiredTopologyLevel: setup.TopologyLabelRack},
-		{Name: "tas-sl-pcsg-only-0-workers-1", MinMember: 0, Parent: nil, RequiredTopologyLevel: setup.TopologyLabelRack},
+		utils.CreateExpectedPCSGParentSubGroup("tas-sl-pcsg-only", 0, "workers", 0, setup.TopologyLabelRack),
+		utils.CreateExpectedPCSGParentSubGroup("tas-sl-pcsg-only", 0, "workers", 1, setup.TopologyLabelRack),
 		// Worker PCLQs (children of PCSG replicas)
-		{Name: "tas-sl-pcsg-only-0-workers-0-worker", MinMember: 1, Parent: ptr.To("tas-sl-pcsg-only-0-workers-0")},
-		{Name: "tas-sl-pcsg-only-0-workers-1-worker", MinMember: 1, Parent: ptr.To("tas-sl-pcsg-only-0-workers-1")},
+		utils.CreateExpectedPCLQInPCSGSubGroup("tas-sl-pcsg-only", 0, "workers", 0, "worker", 1, ""),
+		utils.CreateExpectedPCLQInPCSGSubGroup("tas-sl-pcsg-only", 0, "workers", 1, "worker", 1, ""),
 		// Router (standalone, no constraint)
-		{Name: "tas-sl-pcsg-only-0-router", MinMember: 2, Parent: nil},
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-sl-pcsg-only", 0, "router", 2, ""),
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
@@ -456,7 +454,7 @@ func Test_TAS5_HostLevelConstraint(t *testing.T) {
 
 	// Verify SubGroups (1 standalone PCLQ with host constraint)
 	expectedSubGroups := []utils.ExpectedSubGroup{
-		{Name: "tas-host-level-0-worker", MinMember: 2, Parent: nil, RequiredTopologyLevel: setup.TopologyLabelHostname},
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-host-level", 0, "worker", 2, setup.TopologyLabelHostname),
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
@@ -465,12 +463,17 @@ func Test_TAS5_HostLevelConstraint(t *testing.T) {
 	logger.Info("🎉 TAS5: Host-Level Constraint test completed successfully!")
 }
 
-// Test_TAS6_ZoneLevelConstraint tests PCS with block constraint and standalone PCLQ with host constraint
-// 1. Deploy workload with PCS block constraint and PCLQ host constraint (no PCSG layer)
-// 2. Verify 2 pods on same host (PCLQ constraint, strictest)
-// 3. Verify both pods in same block (PCS constraint inherited)
-// 4. Verify KAI PodGroup has block constraint at top level, 1 SubGroup with host constraint
-func Test_TAS6_ZoneLevelConstraint(t *testing.T) {
+// Test_TAS6_StandalonePCLQOnlyPCSZoneConstraint tests standalone PCLQ with only PCS zone constraint (no PCSG layer)
+// This test differs from TAS3 in two ways:
+// 1. Uses zone constraint (wider domain) instead of rack at PCS level
+// 2. Has NO PCSG layer - only standalone PCLQ directly under PCS (simpler structure)
+// 3. PCLQ itself has NO explicit constraint (inherits from PCS)
+//
+// 1. Deploy workload with PCS zone constraint and single standalone PCLQ (4 replicas)
+// 2. Verify all 4 pods in same zone (PCS constraint inherited)
+// 3. Verify KAI PodGroup has zone constraint at top level
+// 4. Verify 1 SubGroup (standalone PCLQ) with NO additional constraint
+func Test_TAS6_StandalonePCLQOnlyPCSZoneConstraint(t *testing.T) {
 	ctx := context.Background()
 
 	logger.Info("1. Initialize a 28-node Grove cluster for topology testing")
@@ -495,7 +498,7 @@ func Test_TAS6_ZoneLevelConstraint(t *testing.T) {
 		},
 	}
 
-	logger.Info("2. Deploy workload (TAS6: PCS zone constraint)")
+	logger.Info("2. Deploy workload (TAS6: Standalone PCLQ with only PCS zone constraint)")
 	allPods, err := deployWorkloadAndGetPods(tc, expectedPods)
 	if err != nil {
 		t.Fatalf("Setup failed: %v", err)
@@ -506,7 +509,7 @@ func Test_TAS6_ZoneLevelConstraint(t *testing.T) {
 		t.Fatalf("Failed to verify pods in same zone: %v", err)
 	}
 
-	logger.Info("4. Verify KAI PodGroup has correct SubGroups (zone at PCS level)")
+	logger.Info("4. Verify KAI PodGroup has correct SubGroups (Standalone PCLQ with PCS zone constraint)")
 	podGroups, err := utils.WaitForKAIPodGroups(tc.Ctx, tc.DynamicClient, tc.Namespace, "tas-zone-level", tc.Timeout, tc.Interval, logger)
 	if err != nil {
 		t.Fatalf("Failed to get KAI PodGroups: %v", err)
@@ -524,13 +527,13 @@ func Test_TAS6_ZoneLevelConstraint(t *testing.T) {
 
 	// Verify SubGroups (1 standalone PCLQ with NO constraint - zone is at PCS level)
 	expectedSubGroups := []utils.ExpectedSubGroup{
-		{Name: "tas-zone-level-0-worker", MinMember: 4, Parent: nil},
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-zone-level", 0, "worker", 4, ""),
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)
 	}
 
-	logger.Info("🎉 TAS6: Zone-Level Constraint test completed successfully!")
+	logger.Info("🎉 TAS6: Standalone PCLQ with Only PCS Zone Constraint test completed successfully!")
 }
 
 // Test_TAS7_NoTopologyConstraint tests gang scheduling without any topology constraints
@@ -598,8 +601,8 @@ func Test_TAS7_NoTopologyConstraint(t *testing.T) {
 	// Note: PCSG parent groups are NOT created when PCSG has nil TopologyConstraint (PR #357)
 	expectedSubGroups := []utils.ExpectedSubGroup{
 		// Worker PCLQs (directly under PCS, no PCSG parents, no constraints)
-		{Name: "tas-no-constraint-0-workers-0-worker", MinMember: 2, Parent: nil},
-		{Name: "tas-no-constraint-0-workers-1-worker", MinMember: 2, Parent: nil},
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-no-constraint", 0, "workers-0-worker", 2, ""),
+		utils.CreateExpectedStandalonePCLQSubGroup("tas-no-constraint", 0, "workers-1-worker", 2, ""),
 	}
 	if err := utils.VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
 		t.Fatalf("Failed to verify KAI PodGroup SubGroups: %v", err)

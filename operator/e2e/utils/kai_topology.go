@@ -19,16 +19,14 @@
 package utils
 
 import (
-	"fmt"
-
-	kaischedulingv2alpha2 "github.com/NVIDIA/KAI-scheduler/pkg/apis/scheduling/v2alpha2"
-
 	"context"
+	"fmt"
 	"time"
 
+	kaischedulingv2alpha2 "github.com/NVIDIA/KAI-scheduler/pkg/apis/scheduling/v2alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/dynamic"
+	"k8s.io/utils/ptr"
 )
 
 // ExpectedSubGroup defines the expected structure of a KAI PodGroup SubGroup for verification
@@ -38,6 +36,43 @@ type ExpectedSubGroup struct {
 	Parent                 *string
 	RequiredTopologyLevel  string
 	PreferredTopologyLevel string
+}
+
+// CreateExpectedStandalonePCLQSubGroup creates an ExpectedSubGroup for a standalone PodClique (not in PCSG)
+// Name format: <pcs-name>-<pcs-replica>-<clique-name>
+func CreateExpectedStandalonePCLQSubGroup(pcsName string, pcsReplica int, cliqueName string, minMember int32, topologyLevel string) ExpectedSubGroup {
+	name := fmt.Sprintf("%s-%d-%s", pcsName, pcsReplica, cliqueName)
+	return ExpectedSubGroup{
+		Name:                  name,
+		MinMember:             minMember,
+		Parent:                nil,
+		RequiredTopologyLevel: topologyLevel,
+	}
+}
+
+// CreateExpectedPCSGParentSubGroup creates an ExpectedSubGroup for a PCSG parent (scaling group replica)
+// Name format: <pcs-name>-<pcs-replica>-<sg-name>-<sg-replica>
+func CreateExpectedPCSGParentSubGroup(pcsName string, pcsReplica int, sgName string, sgReplica int, topologyLevel string) ExpectedSubGroup {
+	name := fmt.Sprintf("%s-%d-%s-%d", pcsName, pcsReplica, sgName, sgReplica)
+	return ExpectedSubGroup{
+		Name:                  name,
+		MinMember:             0,
+		Parent:                nil,
+		RequiredTopologyLevel: topologyLevel,
+	}
+}
+
+// CreateExpectedPCLQInPCSGSubGroup creates an ExpectedSubGroup for a PodClique within a PCSG
+// Name format: <pcs-name>-<pcs-replica>-<sg-name>-<sg-replica>-<clique-name>
+func CreateExpectedPCLQInPCSGSubGroup(pcsName string, pcsReplica int, sgName string, sgReplica int, cliqueName string, minMember int32, topologyLevel string) ExpectedSubGroup {
+	name := fmt.Sprintf("%s-%d-%s-%d-%s", pcsName, pcsReplica, sgName, sgReplica, cliqueName)
+	parentName := fmt.Sprintf("%s-%d-%s-%d", pcsName, pcsReplica, sgName, sgReplica)
+	return ExpectedSubGroup{
+		Name:                  name,
+		MinMember:             minMember,
+		Parent:                ptr.To(parentName),
+		RequiredTopologyLevel: topologyLevel,
+	}
 }
 
 // GetKAIPodGroupsForPCS retrieves all KAI PodGroups for a given PodCliqueSet by label selector
