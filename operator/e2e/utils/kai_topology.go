@@ -214,3 +214,48 @@ func VerifyKAIPodGroupSubGroups(podGroup *kaischedulingv2alpha2.PodGroup, expect
 	logger.Infof("KAI PodGroup %s verified with %d SubGroups", podGroup.Name, len(expectedSubGroups))
 	return nil
 }
+
+// GetPodGroupForBasePodGangReplica retrieves the KAI PodGroup of the corresponding PodGang
+// which is the base PodGang of specific PodGangSet replica.
+// For a PodGangSet workload "my-workload", replica 0's base PodGang is "my-workload-0".
+func GetPodGroupForBasePodGangReplica(
+	ctx context.Context,
+	dynamicClient dynamic.Interface,
+	namespace string,
+	workloadName string,
+	pgsReplica int,
+	timeout time.Duration,
+	interval time.Duration,
+	logger *Logger,
+) (*kaischedulingv2alpha2.PodGroup, error) {
+	podGroups, err := WaitForKAIPodGroups(ctx, dynamicClient, namespace, workloadName, timeout, interval, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get KAI PodGroups: %w", err)
+	}
+
+	basePodGangName := GetBasePodGangName(workloadName, pgsReplica)
+	basePodGroup, err := FilterPodGroupByOwner(podGroups, basePodGangName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find PodGroup for PodGang %s: %w", basePodGangName, err)
+	}
+
+	return basePodGroup, nil
+}
+
+// VerifyPodGroupTopology verifies both top-level topology constraint and SubGroups structure.
+func VerifyPodGroupTopology(
+	podGroup *kaischedulingv2alpha2.PodGroup,
+	requiredLevel, preferredLevel string,
+	expectedSubGroups []ExpectedSubGroup,
+	logger *Logger,
+) error {
+	if err := VerifyKAIPodGroupTopologyConstraint(podGroup, requiredLevel, preferredLevel, logger); err != nil {
+		return fmt.Errorf("top-level constraint verification failed: %w", err)
+	}
+
+	if err := VerifyKAIPodGroupSubGroups(podGroup, expectedSubGroups, logger); err != nil {
+		return fmt.Errorf("SubGroups verification failed: %w", err)
+	}
+
+	return nil
+}
