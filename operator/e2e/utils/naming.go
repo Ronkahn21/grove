@@ -25,3 +25,21 @@ import "fmt"
 func GetBasePodGangName(workloadName string, pgsReplica int) string {
 	return fmt.Sprintf("%s-%d", workloadName, pgsReplica)
 }
+
+// GetStandalonePCLQSubGroupName constructs the SubGroup name for a standalone PodClique.
+// Format: <pcs-name>-<pcs-replica>-<clique-name>
+func GetStandalonePCLQSubGroupName(pcsName string, pcsReplica int, cliqueName string) string {
+	return fmt.Sprintf("%s-%d-%s", pcsName, pcsReplica, cliqueName)
+}
+
+// GetPCSGParentSubGroupName constructs the SubGroup name for a PCSG parent (scaling group replica).
+// Format: <pcs-name>-<pcs-replica>-<sg-name>-<sg-replica>
+func GetPCSGParentSubGroupName(pcsName string, pcsReplica int, sgName string, sgReplica int) string {
+	return fmt.Sprintf("%s-%d-%s-%d", pcsName, pcsReplica, sgName, sgReplica)
+}
+
+// GetPCLQInPCSGSubGroupName constructs the SubGroup name for a PodClique within a PCSG.
+// Format: <pcs-name>-<pcs-replica>-<sg-name>-<sg-replica>-<clique-name>
+func GetPCLQInPCSGSubGroupName(pcsName string, pcsReplica int, sgName string, sgReplica int, cliqueName string) string {
+	return fmt.Sprintf("%s-%d-%s-%d-%s", pcsName, pcsReplica, sgName, sgReplica, cliqueName)
+}

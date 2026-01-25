@@ -41,7 +41,7 @@ type ExpectedSubGroup struct {
 // CreateExpectedStandalonePCLQSubGroup creates an ExpectedSubGroup for a standalone PodClique (not in PCSG)
 // Name format: <pcs-name>-<pcs-replica>-<clique-name>
 func CreateExpectedStandalonePCLQSubGroup(pcsName string, pcsReplica int, cliqueName string, minMember int32, topologyLevel string) ExpectedSubGroup {
-	name := fmt.Sprintf("%s-%d-%s", pcsName, pcsReplica, cliqueName)
+	name := GetStandalonePCLQSubGroupName(pcsName, pcsReplica, cliqueName)
 	return ExpectedSubGroup{
 		Name:                  name,
 		MinMember:             minMember,
@@ -53,7 +53,7 @@ func CreateExpectedStandalonePCLQSubGroup(pcsName string, pcsReplica int, clique
 // CreateExpectedPCSGParentSubGroup creates an ExpectedSubGroup for a PCSG parent (scaling group replica)
 // Name format: <pcs-name>-<pcs-replica>-<sg-name>-<sg-replica>
 func CreateExpectedPCSGParentSubGroup(pcsName string, pcsReplica int, sgName string, sgReplica int, topologyLevel string) ExpectedSubGroup {
-	name := fmt.Sprintf("%s-%d-%s-%d", pcsName, pcsReplica, sgName, sgReplica)
+	name := GetPCSGParentSubGroupName(pcsName, pcsReplica, sgName, sgReplica)
 	return ExpectedSubGroup{
 		Name:                  name,
 		MinMember:             0,
@@ -65,8 +65,8 @@ func CreateExpectedPCSGParentSubGroup(pcsName string, pcsReplica int, sgName str
 // CreateExpectedPCLQInPCSGSubGroup creates an ExpectedSubGroup for a PodClique within a PCSG
 // Name format: <pcs-name>-<pcs-replica>-<sg-name>-<sg-replica>-<clique-name>
 func CreateExpectedPCLQInPCSGSubGroup(pcsName string, pcsReplica int, sgName string, sgReplica int, cliqueName string, minMember int32, topologyLevel string) ExpectedSubGroup {
-	name := fmt.Sprintf("%s-%d-%s-%d-%s", pcsName, pcsReplica, sgName, sgReplica, cliqueName)
-	parentName := fmt.Sprintf("%s-%d-%s-%d", pcsName, pcsReplica, sgName, sgReplica)
+	name := GetPCLQInPCSGSubGroupName(pcsName, pcsReplica, sgName, sgReplica, cliqueName)
+	parentName := GetPCSGParentSubGroupName(pcsName, pcsReplica, sgName, sgReplica)
 	return ExpectedSubGroup{
 		Name:                  name,
 		MinMember:             minMember,

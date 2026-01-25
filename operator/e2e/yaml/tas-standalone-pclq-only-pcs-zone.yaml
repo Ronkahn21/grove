@@ -4,9 +4,9 @@
 apiVersion: grove.io/v1alpha1
 kind: PodCliqueSet
 metadata:
-  name: tas-zone-level
+  name: tas-standalone-pclq
   labels:
-    app: tas-zone-level
+    app: tas-standalone-pclq
 spec:
   replicas: 1
   template:
