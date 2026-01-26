@@ -20,10 +20,10 @@ package utils
 
 import "fmt"
 
-// GetBasePodGangName constructs the base PodGang name for a specific PodGangSet replica.
+// GetBasePodGangName constructs the base PodGang name for a specific PCS replica.
 // Format: <pgs-name>-<replica-index>
-func GetBasePodGangName(workloadName string, pgsReplica int) string {
-	return fmt.Sprintf("%s-%d", workloadName, pgsReplica)
+func GetBasePodGangName(workloadName string, pcsReplica int) string {
+	return fmt.Sprintf("%s-%d", workloadName, pcsReplica)
 }
 
 // GetStandalonePCLQSubGroupName constructs the SubGroup name for a standalone PodClique.
