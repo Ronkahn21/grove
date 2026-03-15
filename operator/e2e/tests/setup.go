@@ -24,11 +24,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/ai-dynamo/grove/operator/e2e/setup"
 	"github.com/ai-dynamo/grove/operator/e2e/utils"
+	"github.com/ai-dynamo/grove/operator/e2e/utils/measurement"
+	"github.com/ai-dynamo/grove/operator/e2e/utils/portforward"
+	"github.com/ai-dynamo/grove/operator/e2e/utils/pprof"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -78,6 +82,16 @@ const (
 	// Grove label keys
 	LabelPodClique             = "grove.io/podclique"
 	LabelPodCliqueScalingGroup = "grove.io/podcliquescalinggroup"
+)
+
+const (
+	pyroscopeDisabledEnvVar   = "GROVE_E2E_PYROSCOPE_DISABLED"
+	pyroscopeNamespaceEnvVar  = "GROVE_E2E_PYROSCOPE_NAMESPACE"
+	pyroscopeServiceEnvVar    = "GROVE_E2E_PYROSCOPE_SERVICE"
+	pyroscopePortEnvVar       = "GROVE_E2E_PYROSCOPE_PORT"
+	defaultPyroscopeNamespace = "monitoring"
+	defaultPyroscopeService   = "pyroscope"
+	defaultPyroscopePort      = 4040
 )
 
 // TestContext holds common test parameters that are shared across many utility functions.
@@ -686,4 +700,88 @@ func convertTypedToUnstructured(typed interface{}) (*unstructured.Unstructured, 
 		return nil, err
 	}
 	return &unstructured.Unstructured{Object: unstructuredMap}, nil
+}
+
+// pyroscopeConfig holds resolved Pyroscope connection settings.
+// Populated by loadPyroscopeConfig; business logic reads only this struct.
+type pyroscopeConfig struct {
+	Disabled  bool
+	Namespace string
+	Service   string
+	Port      int
+}
+
+// loadPyroscopeConfig reads env vars and applies defaults.
+// This is the single place that knows about env var names and default values.
+func loadPyroscopeConfig() pyroscopeConfig {
+	if os.Getenv(pyroscopeDisabledEnvVar) == "true" {
+		return pyroscopeConfig{Disabled: true}
+	}
+	return pyroscopeConfig{
+		Namespace: envWithDefault(pyroscopeNamespaceEnvVar, defaultPyroscopeNamespace),
+		Service:   envWithDefault(pyroscopeServiceEnvVar, defaultPyroscopeService),
+		Port:      envWithDefault(pyroscopePortEnvVar, defaultPyroscopePort),
+	}
+}
+
+// envWithDefault returns os.Getenv(key) as T, or def if unset, empty, or unparseable.
+func envWithDefault[T string | int](key string, def T) T {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	switch any(def).(type) {
+	case string:
+		return any(v).(T)
+	case int:
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return any(n).(T)
+		}
+	}
+	return def
+}
+
+// setupPprofHook establishes a port-forward to Pyroscope and returns an async
+// after-phase hook for profile downloads. Always returns a valid option and
+// cleanup — callers need no nil check. Falls back to a no-op on failure.
+func setupPprofHook(t *testing.T, ctx context.Context, clients clientCollection,
+	runID, diagDir string, cfg pyroscopeConfig) (measurement.TimelineOption, func()) {
+	t.Helper()
+	noop := measurement.WithAfterPhaseHookAsync(func(context.Context, string, time.Time, time.Time) {})
+	cleanup := func() {}
+
+	if cfg.Disabled {
+		return noop, cleanup
+	}
+
+	session, err := portforward.ForwardService(ctx, clients.restConfig, clients.clientset,
+		cfg.Namespace, cfg.Service, cfg.Port, portforward.WithLogger(logger.GetLogr()))
+	if err != nil {
+		t.Logf("WARN: pprof disabled — port-forward to svc/%s failed: %v", cfg.Service, err)
+		return noop, cleanup
+	}
+
+	dl := pprof.NewDownloader("http://"+session.Addr(), runID,
+		pprof.WithOutputDir(diagDir), pprof.WithLogger(logger.GetLogr()))
+	t.Logf("pprof enabled via svc/%s → http://%s", cfg.Service, session.Addr())
+	return measurement.WithAfterPhaseHookAsync(func(ctx context.Context, phase string, start, end time.Time) {
+		dl.DownloadForPhase(ctx, phase, start, end)
+	}), session.Close
+}
+
+// newScaleTracker builds a TimelineTracker wired with pprof profiling.
+// Returns the tracker, run ID (for logging), and a unified cleanup func.
+// Defer cleanup before cancel so LIFO order ensures downloads finish first.
+func newScaleTracker(t *testing.T, ctx context.Context, testName, namespace string,
+	pcsCount int, clients clientCollection, diagDir string,
+) (*measurement.TimelineTracker, string, func()) {
+	t.Helper()
+	runID := fmt.Sprintf("run-%s", time.Now().Format("20060102-150405"))
+	pprofOpt, pfCleanup := setupPprofHook(t, ctx, clients, runID, diagDir, loadPyroscopeConfig())
+	tracker := measurement.NewTimelineTracker(testName, runID, namespace, pcsCount,
+		measurement.WithPollInterval(scaleTestPollInterval),
+		measurement.WithLogger(logger.GetLogr()),
+		pprofOpt,
+	)
+	return tracker, runID, func() { tracker.Wait(); pfCleanup() }
 }
