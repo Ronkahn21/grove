@@ -75,7 +75,7 @@ const (
 	defaultPollInterval = 5 * time.Second
 
 	// scaleTestPollInterval defines the interval at which polling occurs during scale tests, set to 2 seconds.
-	scaleTestPollInterval = 2 * time.Second
+	scaleTestPollInterval = 100 * time.Millisecond
 	// scaleTestTimeout defines the timeout for scale tests, set to 15 minutes.
 	scaleTestTimeout = 15 * time.Minute
 

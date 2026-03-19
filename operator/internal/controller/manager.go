@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -114,6 +115,8 @@ func createManagerOptions(operatorCfg *configv1alpha1.OperatorConfiguration) ctr
 				*operatorCfg.Debugging.PprofBindHost,
 				strconv.Itoa(*operatorCfg.Debugging.PprofBindPort),
 			)
+			runtime.SetMutexProfileFraction(5)
+			runtime.SetBlockProfileRate(5000)
 		}
 	}
 	return opts
