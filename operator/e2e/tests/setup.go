@@ -89,7 +89,7 @@ const (
 	pyroscopeNamespaceEnvVar  = "GROVE_E2E_PYROSCOPE_NAMESPACE"
 	pyroscopeServiceEnvVar    = "GROVE_E2E_PYROSCOPE_SERVICE"
 	pyroscopePortEnvVar       = "GROVE_E2E_PYROSCOPE_PORT"
-	defaultPyroscopeNamespace = "monitoring"
+	defaultPyroscopeNamespace = "pyroscope"
 	defaultPyroscopeService   = "pyroscope"
 	defaultPyroscopePort      = 4040
 )

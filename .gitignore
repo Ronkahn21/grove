@@ -55,3 +55,8 @@ operator/charts/crds/*
 
 # Python bytecode cache
 __pycache__/
+.serena/
+
+# pprof profiles and scale test results
+*.pprof.gz
+operator/e2e/tests/scale-test-*.json

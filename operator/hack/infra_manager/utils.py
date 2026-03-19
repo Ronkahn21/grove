@@ -115,6 +115,10 @@ def _pyroscope_annotation_overrides() -> list[tuple[str, str]]:
         "profiles.grafana.com/memory.port": port,
         "profiles.grafana.com/goroutine.scrape": "true",
         "profiles.grafana.com/goroutine.port": port,
+        "profiles.grafana.com/mutex.scrape": "true",
+        "profiles.grafana.com/mutex.port": port,
+        "profiles.grafana.com/block.scrape": "true",
+        "profiles.grafana.com/block.port": port,
     }
     return [
         ("--set-string", f"{HELM_KEY_ANNOTATION_PREFIX}.{key.replace('.', '\\.')}={value}")

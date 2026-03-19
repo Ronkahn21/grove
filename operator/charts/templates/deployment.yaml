@@ -54,6 +54,12 @@ spec:
             initialDelaySeconds: 10
             timeoutSeconds: 5
           {{- end }}
+          {{- if .Values.config.debugging.pprofBindPort }}
+          ports:
+            - name: pprof
+              containerPort: {{ .Values.config.debugging.pprofBindPort }}
+              protocol: TCP
+          {{- end }}
           {{- if .Values.resources }}
           resources:
 {{- toYaml .Values.resources | nindent 12 }}

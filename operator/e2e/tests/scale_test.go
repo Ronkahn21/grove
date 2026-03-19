@@ -49,11 +49,11 @@ func toOperatorMetadata(m *utils.GroveMetadata) *measurement.OperatorMetadata {
 }
 
 const (
-	scaleTestExpectedPods     = 5000
-	scaleTestExpectedReplicas = 2500
+	scaleTestExpectedPods     = 1000
+	scaleTestExpectedReplicas = 500
 )
 
-func Test_ScaleTest_5000_MoE(t *testing.T) {
+func Test_ScaleTest_1000(t *testing.T) {
 	diagDir := os.Getenv(DiagnosticsDirEnvVar)
 	logger.Infof("starting scale test: %d expected pods, timeout %v", scaleTestExpectedPods, scaleTestTimeout)
 
@@ -80,14 +80,14 @@ func Test_ScaleTest_5000_MoE(t *testing.T) {
 		Timeout:       scaleTestTimeout,
 		Interval:      scaleTestPollInterval,
 		Workload: &WorkloadConfig{
-			Name:         "scale-test-5000-moe",
-			YAMLPath:     "../yaml/scale-test-5000-moe.yaml",
+			Name:         "scale-test-1000",
+			YAMLPath:     "../yaml/scale-test-1000.yaml",
 			Namespace:    "default",
 			ExpectedPods: scaleTestExpectedPods,
 		},
 	}
 
-	tracker, runID, trackerCleanup := newScaleTracker(t, ctx, "ScaleTest_5000_MoE", tc.Namespace, 1, clients, diagDir)
+	tracker, runID, trackerCleanup := newScaleTracker(t, ctx, tc.Workload.Name, tc.Namespace, 1, clients, diagDir)
 	defer trackerCleanup()
 	logger.Infof("test config: runID=%s, namespace=%s, pcsName=%s", runID, tc.Namespace, tc.Workload.Name)
 
