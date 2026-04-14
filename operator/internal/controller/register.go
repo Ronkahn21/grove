@@ -17,9 +17,11 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 
 	configv1alpha1 "github.com/ai-dynamo/grove/operator/api/config/v1alpha1"
+	componentutils "github.com/ai-dynamo/grove/operator/internal/controller/common/component/utils"
 	"github.com/ai-dynamo/grove/operator/internal/controller/podclique"
 	"github.com/ai-dynamo/grove/operator/internal/controller/podcliquescalinggroup"
 	"github.com/ai-dynamo/grove/operator/internal/controller/podcliqueset"
@@ -33,6 +35,13 @@ func RegisterControllers(mgr ctrl.Manager, config *configv1alpha1.OperatorConfig
 	if config == nil {
 		return fmt.Errorf("operator configuration must not be nil")
 	}
+
+	// Register field indexes before controllers start — these enable efficient
+	// cache lookups instead of scanning all objects on every List call.
+	if err := componentutils.RegisterPodOwnerPCLQIndex(context.Background(), mgr); err != nil {
+		return fmt.Errorf("failed to register pod field index: %w", err)
+	}
+
 	pcsReconciler := podcliqueset.NewReconciler(mgr, config.Controllers.PodCliqueSet, config.TopologyAwareScheduling, config.Network)
 	if err := pcsReconciler.RegisterWithManager(mgr); err != nil {
 		return err

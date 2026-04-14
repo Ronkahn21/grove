@@ -18,31 +18,50 @@ package utils
 
 import (
 	"context"
+	"fmt"
 
-	apicommon "github.com/ai-dynamo/grove/operator/api/common"
+	"github.com/ai-dynamo/grove/operator/api/common/constants"
 	grovecorev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+	k8sutils "github.com/ai-dynamo/grove/operator/internal/utils/kubernetes"
 
 	"github.com/samber/lo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-// GetPCLQPods lists all Pods that belong to a PodClique
-func GetPCLQPods(ctx context.Context, cl client.Client, pcsName string, pclq *grovecorev1alpha1.PodClique) ([]*corev1.Pod, error) {
+// PodOwnerPCLQField is the field index key for looking up pods by their owning PodClique.
+// The index must be registered via RegisterPodOwnerPCLQIndex before the manager starts.
+const PodOwnerPCLQField = ".metadata.controller-pclq"
+
+// RegisterPodOwnerPCLQIndex registers a field index on Pods by their owning PodClique name.
+// This enables efficient cache lookups in GetPCLQPods instead of scanning all pods.
+// Must be called before the manager starts.
+func RegisterPodOwnerPCLQIndex(ctx context.Context, mgr manager.Manager) error {
+	return mgr.GetFieldIndexer().IndexField(ctx, &corev1.Pod{}, PodOwnerPCLQField, func(obj client.Object) []string {
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
+			return nil
+		}
+		ownerRef := k8sutils.FindOwnerRefByKind(pod.OwnerReferences, constants.KindPodClique)
+		if ownerRef == nil {
+			return nil
+		}
+		return []string{fmt.Sprintf("%s/%s", pod.Namespace, ownerRef.Name)}
+	})
+}
+
+// GetPCLQPods lists all Pods owned by a PodClique using a field index for efficient lookup.
+func GetPCLQPods(ctx context.Context, cl client.Client, _ string, pclq *grovecorev1alpha1.PodClique) ([]*corev1.Pod, error) {
 	podList := &corev1.PodList{}
+	indexKey := fmt.Sprintf("%s/%s", pclq.Namespace, pclq.Name)
 	if err := cl.List(ctx,
 		podList,
 		client.InNamespace(pclq.Namespace),
-		client.MatchingLabels(
-			lo.Assign(
-				apicommon.GetDefaultLabelsForPodCliqueSetManagedResources(pcsName),
-				map[string]string{
-					apicommon.LabelPodClique: pclq.Name,
-				},
-			),
-		)); err != nil {
+		client.MatchingFields{PodOwnerPCLQField: indexKey},
+	); err != nil {
 		return nil, err
 	}
 	ownedPods := make([]*corev1.Pod, 0, len(podList.Items))

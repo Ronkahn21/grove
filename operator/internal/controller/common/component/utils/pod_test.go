@@ -18,10 +18,13 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	apicommon "github.com/ai-dynamo/grove/operator/api/common"
+	"github.com/ai-dynamo/grove/operator/api/common/constants"
 	grovecorev1alpha1 "github.com/ai-dynamo/grove/operator/api/core/v1alpha1"
+	k8sutils "github.com/ai-dynamo/grove/operator/internal/utils/kubernetes"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,8 +32,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+// podOwnerPCLQTestIndexer mirrors the production indexer for use with the fake client.
+func podOwnerPCLQTestIndexer(obj client.Object) []string {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return nil
+	}
+	ownerRef := k8sutils.FindOwnerRefByKind(pod.OwnerReferences, constants.KindPodClique)
+	if ownerRef == nil {
+		return nil
+	}
+	return []string{fmt.Sprintf("%s/%s", pod.Namespace, ownerRef.Name)}
+}
 
 // TestGetPCLQPods tests listing pods that belong to a PodClique.
 func TestGetPCLQPods(t *testing.T) {
@@ -85,6 +102,7 @@ func TestGetPCLQPods(t *testing.T) {
 
 		cl := fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithIndex(&corev1.Pod{}, PodOwnerPCLQField, podOwnerPCLQTestIndexer).
 			WithObjects(ownedPod, notOwnedPod).
 			Build()
 
@@ -107,6 +125,7 @@ func TestGetPCLQPods(t *testing.T) {
 
 		cl := fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithIndex(&corev1.Pod{}, PodOwnerPCLQField, podOwnerPCLQTestIndexer).
 			Build()
 
 		pods, err := GetPCLQPods(context.Background(), cl, "test-pcs", pclq)
@@ -152,6 +171,7 @@ func TestGetPCLQPods(t *testing.T) {
 
 		cl := fake.NewClientBuilder().
 			WithScheme(scheme).
+			WithIndex(&corev1.Pod{}, PodOwnerPCLQField, podOwnerPCLQTestIndexer).
 			WithObjects(pods[0], pods[1], pods[2]).
 			Build()
 
