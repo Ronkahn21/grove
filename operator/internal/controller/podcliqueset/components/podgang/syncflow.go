@@ -403,12 +403,15 @@ func (r _resource) getExistingPCSGsForPCS(ctx context.Context, pcs *grovecorev1a
 
 // getExistingPodsByPCLQForPCS fetches all non-terminating pods grouped by PodClique.
 // It returns a map where the key is the PodClique FQN and the value is a slice of Pods belonging to that PodClique.
+// Uses UnsafeDisableDeepCopy to avoid copying every Pod from the cache — safe because
+// the loop only reads fields and the map append copies each Pod by value.
 func (r _resource) getExistingPodsByPCLQForPCS(ctx context.Context, pcsObjectKey client.ObjectKey) (map[string][]corev1.Pod, error) {
 	podList := &corev1.PodList{}
 	if err := r.client.List(ctx,
 		podList,
 		client.InNamespace(pcsObjectKey.Namespace),
 		client.MatchingLabels(apicommon.GetDefaultLabelsForPodCliqueSetManagedResources(pcsObjectKey.Name)),
+		client.UnsafeDisableDeepCopy,
 	); err != nil {
 		return nil, err
 	}

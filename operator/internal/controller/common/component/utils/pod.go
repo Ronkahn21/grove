@@ -54,6 +54,8 @@ func RegisterPodOwnerPCLQIndex(ctx context.Context, mgr manager.Manager) error {
 }
 
 // GetPCLQPods lists all Pods owned by a PodClique using a field index for efficient lookup.
+// Uses UnsafeDisableDeepCopy to avoid copying every Pod from the cache — safe because
+// callers only read pod fields for status checks and the returned pointers are not mutated.
 func GetPCLQPods(ctx context.Context, cl client.Client, _ string, pclq *grovecorev1alpha1.PodClique) ([]*corev1.Pod, error) {
 	podList := &corev1.PodList{}
 	indexKey := fmt.Sprintf("%s/%s", pclq.Namespace, pclq.Name)
@@ -61,6 +63,7 @@ func GetPCLQPods(ctx context.Context, cl client.Client, _ string, pclq *grovecor
 		podList,
 		client.InNamespace(pclq.Namespace),
 		client.MatchingFields{PodOwnerPCLQField: indexKey},
+		client.UnsafeDisableDeepCopy,
 	); err != nil {
 		return nil, err
 	}
