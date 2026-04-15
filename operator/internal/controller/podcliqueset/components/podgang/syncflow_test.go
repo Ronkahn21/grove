@@ -207,8 +207,8 @@ func TestMinAvailableWithHPAScaling(t *testing.T) {
 // TestVerifyAllPodsCreated tests verifyAllPodsCreated with minimal sc + podGangInfo (no PCS/prepareSyncFlow).
 // It covers both the PCLQ existence check and getPodsPendingCreationOrAssociation logic (Replicas and podgang label).
 func TestVerifyAllPodsCreated(t *testing.T) {
-	makePod := func(name string, podGangLabel string) v1.Pod {
-		pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
+	makePod := func(name string, podGangLabel string) metav1.PartialObjectMetadata {
+		pod := metav1.PartialObjectMetadata{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}}
 		if podGangLabel != "" {
 			pod.Labels = map[string]string{apicommon.LabelPodGang: podGangLabel}
 		}
@@ -223,21 +223,21 @@ func TestVerifyAllPodsCreated(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		existingPods  map[string][]v1.Pod
+		existingPods  map[string][]metav1.PartialObjectMetadata
 		existingPCLQs []grovecorev1alpha1.PodClique
 		podGang       *podGangInfo
 		wantRequeue   bool
 	}{
 		{
 			name:          "requeue when not all constituent PCLQs exist yet",
-			existingPods:  map[string][]v1.Pod{"pclq-a": {makePod("a1", "pg-1")}},
+			existingPods:  map[string][]metav1.PartialObjectMetadata{"pclq-a": {makePod("a1", "pg-1")}},
 			existingPCLQs: []grovecorev1alpha1.PodClique{makePCLQ("pclq-a", 1, 1)},
 			podGang:       &podGangInfo{fqn: "pg-1", pclqs: []pclqInfo{{fqn: "pclq-a", replicas: 1, minAvailable: 1}, {fqn: "pclq-b", replicas: 1, minAvailable: 1}}},
 			wantRequeue:   true,
 		},
 		{
 			name: "requeue when PCLQ has fewer pods than Replicas (even if >= MinAvailable)",
-			existingPods: map[string][]v1.Pod{
+			existingPods: map[string][]metav1.PartialObjectMetadata{
 				"pclq-a": {makePod("a1", "pg-1"), makePod("a2", "pg-1")}, // 2 pods, Replicas=5, MinAvailable=2
 			},
 			existingPCLQs: []grovecorev1alpha1.PodClique{makePCLQ("pclq-a", 5, 2)},
@@ -246,7 +246,7 @@ func TestVerifyAllPodsCreated(t *testing.T) {
 		},
 		{
 			name: "requeue when Pod missing podgang label",
-			existingPods: map[string][]v1.Pod{
+			existingPods: map[string][]metav1.PartialObjectMetadata{
 				"pclq-a": {makePod("a1", ""), makePod("a2", "pg-1")}, // a1 missing label
 			},
 			existingPCLQs: []grovecorev1alpha1.PodClique{makePCLQ("pclq-a", 2, 1)},
@@ -255,7 +255,7 @@ func TestVerifyAllPodsCreated(t *testing.T) {
 		},
 		{
 			name: "requeue when Pod has wrong podgang label",
-			existingPods: map[string][]v1.Pod{
+			existingPods: map[string][]metav1.PartialObjectMetadata{
 				"pclq-a": {makePod("a1", "pg-wrong"), makePod("a2", "pg-1")},
 			},
 			existingPCLQs: []grovecorev1alpha1.PodClique{makePCLQ("pclq-a", 2, 1)},
@@ -264,7 +264,7 @@ func TestVerifyAllPodsCreated(t *testing.T) {
 		},
 		{
 			name: "success when all Replicas created and all pods have correct podgang label",
-			existingPods: map[string][]v1.Pod{
+			existingPods: map[string][]metav1.PartialObjectMetadata{
 				"pclq-a": {makePod("a1", "pg-1"), makePod("a2", "pg-1"), makePod("a3", "pg-1"), makePod("a4", "pg-1"), makePod("a5", "pg-1")},
 			},
 			existingPCLQs: []grovecorev1alpha1.PodClique{makePCLQ("pclq-a", 5, 2)},

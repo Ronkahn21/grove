@@ -49,8 +49,8 @@ func (r _resource) prepareSyncFlow(ctx context.Context, logger logr.Logger, pcs 
 		//ctx:                  ctx,
 		pcs:                  pcs,
 		logger:               logger,
-		existingPCLQPods:     make(map[string][]corev1.Pod),
-		unassignedPodsByPCLQ: make(map[string][]corev1.Pod),
+		existingPCLQPods:     make(map[string][]metav1.PartialObjectMetadata),
+		unassignedPodsByPCLQ: make(map[string][]metav1.PartialObjectMetadata),
 	}
 
 	sc.existingPCLQs, err = r.getExistingPCLQsForPCS(ctx, pcs)
@@ -401,28 +401,28 @@ func (r _resource) getExistingPCSGsForPCS(ctx context.Context, pcs *grovecorev1a
 	}), nil
 }
 
-// getExistingPodsByPCLQForPCS fetches all non-terminating pods grouped by PodClique.
-// It returns a map where the key is the PodClique FQN and the value is a slice of Pods belonging to that PodClique.
-// Uses UnsafeDisableDeepCopy to avoid copying every Pod from the cache — safe because
-// the loop only reads fields and the map append copies each Pod by value.
-func (r _resource) getExistingPodsByPCLQForPCS(ctx context.Context, pcsObjectKey client.ObjectKey) (map[string][]corev1.Pod, error) {
-	podList := &corev1.PodList{}
+// getExistingPodsByPCLQForPCS fetches metadata-only for all non-terminating pods grouped by PodClique.
+// Uses PartialObjectMetadataList to avoid fetching full Pod specs — the PCS controller only needs
+// labels, owner references, and name for PodGang assignment logic.
+func (r _resource) getExistingPodsByPCLQForPCS(ctx context.Context, pcsObjectKey client.ObjectKey) (map[string][]metav1.PartialObjectMetadata, error) {
+	podMetaList := &metav1.PartialObjectMetadataList{}
+	podMetaList.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("PodList"))
 	if err := r.client.List(ctx,
-		podList,
+		podMetaList,
 		client.InNamespace(pcsObjectKey.Namespace),
 		client.MatchingLabels(apicommon.GetDefaultLabelsForPodCliqueSetManagedResources(pcsObjectKey.Name)),
-		client.UnsafeDisableDeepCopy,
 	); err != nil {
 		return nil, err
 	}
 
-	podsByPCLQ := make(map[string][]corev1.Pod)
-	for _, pod := range podList.Items {
+	podsByPCLQ := make(map[string][]metav1.PartialObjectMetadata)
+	for i := range podMetaList.Items {
+		pod := &podMetaList.Items[i]
 		if pod.DeletionTimestamp != nil {
 			continue
 		}
 		pclqFQN := k8sutils.GetFirstOwnerName(pod.ObjectMeta)
-		podsByPCLQ[pclqFQN] = append(podsByPCLQ[pclqFQN], pod)
+		podsByPCLQ[pclqFQN] = append(podsByPCLQ[pclqFQN], *pod)
 	}
 
 	return podsByPCLQ, nil
@@ -635,10 +635,10 @@ type syncContext struct {
 	expectedPodGangs     []*podGangInfo
 	existingPodGangs     []groveschedulerv1alpha1.PodGang
 	deletedPodGangNames  []string
-	existingPCLQPods     map[string][]corev1.Pod
+	existingPCLQPods     map[string][]metav1.PartialObjectMetadata
 	existingPCLQs        []grovecorev1alpha1.PodClique
 	existingPCSGs        []grovecorev1alpha1.PodCliqueScalingGroup
-	unassignedPodsByPCLQ map[string][]corev1.Pod
+	unassignedPodsByPCLQ map[string][]metav1.PartialObjectMetadata
 	tasEnabled           bool
 	topologyLevels       []grovecorev1alpha1.TopologyLevel
 }
